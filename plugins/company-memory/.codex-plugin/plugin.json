@@ -1,0 +1,33 @@
+{
+  "name": "company-memory",
+  "version": "0.1.0+codex.20260810081637",
+  "description": "Search SmartBrain project memory, privacy-scoped member experience, and project meeting summaries; publish identity-attributed project knowledge after safety checks.",
+  "author": {
+    "name": "SmartBrain"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Company Memory",
+    "shortDescription": "Search project, member, and meeting knowledge on demand.",
+    "longDescription": "Retrieves project knowledge, privacy-scoped member experience, and project meeting summaries from SmartBrain; trusted writes are attributed to the authenticated MCP Token owner and published after safety checks.",
+    "developerName": "SmartBrain",
+    "category": "Productivity",
+    "capabilities": [
+      "Search",
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Find the most relevant company decisions and proven workflows for this task.",
+      "See how a named member completed a similar task and adapt the method.",
+      "Find meeting decisions and action items related to this work."
+    ]
+  },
+  "mcpServers": {
+    "smartbrain-company-memory": {
+      "type": "http",
+      "url": "https://39.105.79.0/mcp",
+      "bearer_token_env_var": "SMARTBRAIN_WIKI_MCP_TOKEN"
+    }
+  }
+}

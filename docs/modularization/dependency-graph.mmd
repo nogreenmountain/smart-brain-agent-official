@@ -1,0 +1,43 @@
+flowchart LR
+    Web[smartbrain-dashboard]
+    Legacy[dashboard]
+    Client[smartbrain lib/api.ts]
+    Routes[agentops_local v4 routes]
+    Core[AgentOps core\nauth / orm / clients / audit]
+    Domains[SmartBrain domains]
+    RAG[RAG package]
+    Workers[Wiki / daily log / member Wiki workers]
+    PG[(Supabase PostgreSQL)]
+    CH[(ClickHouse / OTEL)]
+    Redis[(Redis)]
+    Storage[(Object/local storage)]
+    Models[External AI / embedding / reranker]
+    Infra[Compose / nginx / deploy / Jockey]
+    Employee[Employee telemetry / Monitor]
+
+    Web --> Client
+    Client --> Routes
+    Legacy --> Core
+    Legacy --> CH
+    Routes --> Core
+    Routes --> Domains
+    Domains --> Core
+    Domains --> RAG
+    Domains --> PG
+    Domains --> Storage
+    Domains --> CH
+    Domains --> Models
+    RAG --> PG
+    RAG --> Models
+    Workers --> Domains
+    Workers --> PG
+    Workers --> Models
+    Domains --> Redis
+    Employee --> Routes
+    Employee --> CH
+    Infra --> Routes
+    Infra --> Workers
+    Infra --> RAG
+    Infra --> PG
+    Infra --> Redis
+    Infra --> CH

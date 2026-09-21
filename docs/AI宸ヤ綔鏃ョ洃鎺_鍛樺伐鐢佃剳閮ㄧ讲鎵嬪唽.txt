@@ -1,0 +1,189 @@
+AI 工作日监控：CC Switch 员工电脑部署手册
+版本：2026-07-29-r6-exe
+
+一、方案结论
+
+可行，但准确说法是：
+
+CC Switch 负责模型/API/供应商切换、本地路由和保存 Common Config；
+Claude Code 与 Codex 自己产生 OpenTelemetry Trace；
+AgentOps Collector 接收 Trace；
+智慧大脑 Workday 页面按员工和日期汇总。
+
+只安装 CC Switch、只登录智慧大脑网页，都不会自动产生监控数据。员工电脑还必须双击运行一次本手册中的 EXE 安装器，并重新启动 Claude Code/Codex。
+
+二、采集边界
+
+采集：
+
+1. 员工编号和姓名。
+2. Claude Code/Codex 来源。
+3. 会话、Trace、Span、LLM 调用和工具调用数量。
+4. 模型、Token、成本估算、延迟、成功/失败。
+5. 开始和结束时间。
+6. Codex、Claude 中员工可见的用户消息和 AI 文本回复原文。
+
+不采集：
+
+1. 键盘、鼠标、屏幕截图、剪贴板和浏览器历史。
+2. 系统提示词、密钥和认证令牌。
+3. 工具参数、工具输出和 Shell 完整命令。
+4. 本地文件内容和完整文件路径。
+5. 员工桌面上的其他软件活动。
+
+建议公司在正式启用前完成员工告知、授权、数据保留周期和查看权限制度。
+
+三、服务器管理员生成通用部署包
+
+服务器项目目录：
+
+D:\AgentOpsServer\AgentOps\app
+
+先确认以下容器正在运行：
+
+agentops-api-1
+agentops-otel
+agentops-clickhouse-1
+
+如需重新构建底层通用配置，在 PowerShell 中运行：
+
+cd D:\AgentOpsServer\AgentOps\app
+.\scripts\Generate-UniversalEmployeeTelemetryBundle.ps1
+
+底层通用配置保存到：
+
+D:\AgentOpsServer\AgentOps\employee-deploy\universal\ai-workday-universal
+
+再使用 `employee_telemetry\windows_installer\Build-Installer.ps1` 把该配置、ChatGPT 网页扩展和锁定哈希的 CPython 3.12.10 嵌入运行时封装成统一 EXE。发布文件为：
+
+D:\AgentOpsServer\AgentOps\employee-deploy\universal\SmartBrain-AIMonitor-Setup-20260729-r6.exe
+
+这个 EXE 可以发给所有员工，不需要再按 test1 到 test12 分别打包。
+
+通用包本身不包含员工编号、密码或采集令牌。员工首次安装时输入智慧大脑用户名和密码，服务端确认账号及项目成员关系后，才会为这台电脑签发绑定该登录账号的采集令牌。
+
+四、员工电脑要求
+
+1. Windows 10 或更高版本。
+2. CC Switch 3.12.2 或更高版本，建议 3.17.0。
+3. 已安装 Claude Code 或 Codex。
+4. 能访问服务器 192.168.1.40 的 8000 和 4318 端口。
+
+员工电脑不需要预装 Python，EXE 已内置独立运行时。
+
+可在员工电脑 PowerShell 中检查网络：
+
+Test-NetConnection 192.168.1.40 -Port 4318
+Test-NetConnection 192.168.1.40 -Port 8000
+
+TcpTestSucceeded 必须为 True。
+
+五、员工电脑安装
+
+所有员工从智慧大脑 AI Monitor 页面下载相同的 r6 一键安装器：
+
+http://192.168.1.40:3002/monitor/setup
+
+1. 员工登录智慧大脑并进入“AI Monitor”。
+2. 点击“下载一键安装器”，得到 SmartBrain-AIMonitor-Setup-latest.exe。
+3. 从系统托盘彻底退出 CC Switch，并关闭 Edge / Chrome。
+4. 双击 EXE。当前测试包尚未购买代码签名证书，若 SmartScreen 提示未知发布者，核对下载来源后选择“更多信息 -> 仍要运行”。
+5. 输入自己的智慧大脑用户名和密码，例如 test1 / 123456。
+6. 点击“立即安装”。短用户名 test1 会自动补全为 test1@local.dev。
+7. 安装成功后重新打开 CC Switch。
+8. 在 CC Switch 中分别进入 Claude 和 Codex，各切换一次当前供应商。
+9. 关闭已经打开的 Claude Code/Codex 窗口并重新打开。
+10. 正常使用 Claude Code 或 Codex。
+
+整个过程不需要打开命令行，也不需要管理员权限。
+
+安装器会自动：
+
+1. 检查服务器 4318 端口。
+2. 使用现有账号密码登录智慧大脑并验证项目权限。
+3. 从登录账号自动绑定员工编号，员工不能自行填写或冒充其他编号。
+4. 签发带有效期、绑定账号和项目的 Trace/对话同步设备令牌。
+5. 备份 CC Switch 数据库、Claude settings.json 和 Codex config.toml。
+6. 更新 CC Switch 的 Claude/Codex Common Config。
+7. 让所有 Claude/Codex Provider 使用 Common Config。
+8. 同步更新当前 Claude/Codex 配置。
+9. 开启结构化 Trace，并安装只读取 Codex/Claude 本地会话 JSONL 的对话同步器。
+10. 把 192.168.1.40、127.0.0.1 和 localhost 追加到用户级 NO_PROXY，避免系统代理拦截局域网 Trace。
+11. 创建“SmartBrain AI Conversation Sync”定时任务，首次同步最近 7 天，之后
+    每两分钟同步一次。
+12. 删除临时配置；设备令牌单独保存在当前 Windows 用户 AppData 运行目录。
+
+密码只在本次登录的内存中使用，不写入文件、CC Switch、Claude 或 Codex。
+
+六、验证是否开始监控
+
+员工完成一次 Claude Code 或 Codex 操作后，结构化 Trace 约 5 到 15 秒可见，
+完整对话正文最长等待约 2 分钟。
+
+项目成员打开：
+
+http://192.168.1.40:3002/workday
+
+员工使用自己的账号登录后进入“AI 工作日”，选择当天并点击“查询记录”。
+
+应看到：
+
+1. 一次用户提问只显示为少量真实对话记录，不出现大量 auth/config/plugin Trace。
+2. 展开记录能看到用户消息和 AI 文本回复原文。
+3. 有准确的模型、输入 Token、输出 Token、总 Token 和耗时。
+4. 不显示系统提示词、密钥、工具参数、命令输出和本地文件内容。
+
+当前原生 CLI 不会自动生成 agentops.task.id，因此任务拆分可能显示“未标记任务”。这不影响员工、日期、调用、Token、工具和错误汇总。
+
+七、登录与监控的关系
+
+智慧大脑 test1 到 test12 的用户名密码有两个用途：
+
+1. 登录网页并查看有权限的项目。
+2. 安装时验证员工身份并领取专属遥测令牌。
+
+员工只登录 http://192.168.1.40:3002，仍然不会因此开始监控。
+
+真正开始监控的条件是：
+
+1. 员工电脑执行部署包安装器。
+2. CC Switch Common Config 已应用。
+3. Claude Code/Codex 已重新启动。
+4. 员工电脑能访问 192.168.1.40:4318。
+5. 新启动的 Claude Code/Codex 已读取安装器写入的 NO_PROXY。
+
+安装成功后不必保持网页登录，也可以正常上报 Trace；网页只是查看入口。
+
+八、卸载
+
+1. 从系统托盘彻底退出 CC Switch。
+2. 打开 Windows“设置 -> 应用 -> 已安装的应用”。
+3. 找到“SmartBrain AI Monitor”并点击卸载。
+4. 重新打开 CC Switch。
+
+安装和卸载前的配置及 NO_PROXY 备份保存在：
+
+%LOCALAPPDATA%\AIWorkdayTelemetry\backups
+
+九、令牌到期与重新部署
+
+默认令牌有效期由服务器配置决定。到期后员工重新运行同一份 EXE 并再次登录即可，不需要管理员重新生成或发放个人部署包。
+
+测试期建议 30 天。正式使用建议启用 HTTPS、建立定期轮换和离职员工撤销流程。
+
+十、当前网络安全说明
+
+当前 Collector 使用：
+
+http://192.168.1.40:4318
+
+这适合受控局域网试运行，但 HTTP 不加密。正式跨网、无线访客网或不可信局域网部署前，应先给 OTLP 入口启用 HTTPS/TLS。
+
+十一、常见故障
+
+1. 登录提示账号、密码或项目权限失败：确认使用自己的智慧大脑账号，并确认账号已加入 Default Project。
+2. Windows 阻止运行：确认 EXE 从智慧大脑 3002 页面下载，点击 SmartScreen 的“更多信息 -> 仍要运行”；正式推广时应配置代码签名证书。
+3. 网络正常但 Codex 没有数据：确认安装完成后已彻底关闭并重新打开 Codex。旧进程不会读取新的配置。
+4. Claude 有数据而 Codex 没有数据：直接重新运行 EXE 覆盖安装，然后重开 CC Switch 和 Codex。
+5. 两者都没有数据：检查令牌是否过期，以及服务器 agentops-otel 是否正在运行。
+6. 页面显示“未标记任务”：这是当前原生 CLI 没有动态任务标签的正常表现，不代表采集失败。

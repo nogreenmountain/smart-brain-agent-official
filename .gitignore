@@ -1,0 +1,104 @@
+# Dependencies / package managers
+node_modules/
+.pnpm-store/
+
+# Python caches
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build / local artifacts
+.build-cache/
+dist/
+build/
+*.egg-info/
+
+# Runtime artifacts & local backups (kept out of the public repo)
+.artifacts/
+release/
+backups/
+.tmp/
+.tmp-candidate*/
+.tmp-*.py
+.tmp-*.sh
+.tmp-*.tar.gz
+*.partial
+
+# Local working dirs / scratch
+-w/
+
+# Editors / agent state
+.claude/
+.agents/
+.vscode/
+.idea/
+
+# Office documents (kept private)
+*.docx
+
+# Inspection sidecars
+*.inspection.json
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Logs
+*.log
+
+# Local Next.js build snapshots
+.next*/
+.next.interrupted-*/
+.next.pre-*/
+
+
+.tmp*
+-w/
+*.log
+
+
+# Local archives / build snapshots / scratch DBs
+*.tgz
+*.tar.gz
+cache.db
+*.partial
+dashchunks/
+next-current2/
+.authoritative-source/
+
+
+AgentOps/
+
+
+AGENTS.md
+
+# Secrets and local credentials
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.secret
+*credentials*
+*secrets*
+
+# Databases and private exports
+*.dump
+*.sqlite
+*.sqlite3
+*.db
+*.bak
+private/
+evidence.private.*
+
+# Local deployment state
+.deploy-state/
+.runtime/
+

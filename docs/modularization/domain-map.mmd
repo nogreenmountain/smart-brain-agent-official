@@ -1,0 +1,65 @@
+flowchart TB
+    Web[SmartBrain Web]
+    LegacyWeb[Legacy AgentOps Dashboard]
+    Core[Platform Core\nAuth / Users / Orgs / Roles / Audit]
+    Projects[Project Management]
+    Content[Content & Materials]
+    RAG[RAG Runtime\nEmbedding / Reranking / Search]
+    Memory[Project Memory]
+    Wiki[Project & Member Wiki]
+    Work[Work Records\nMeetings / Workday / Logs]
+    Usage[AI Usage & Reporting]
+    Gateway[Personal Key & AI Gateway]
+    Monitor[AI Monitor / Employee Agent]
+    Obs[Observability\nOTEL / ClickHouse / Traces]
+    Infra[Runtime Infra\nDocker / nginx / Backup / Jockey]
+    DB[(PostgreSQL / Supabase)]
+    CH[(ClickHouse)]
+    Redis[(Redis)]
+    Models[External AI / RAG Services]
+
+    Web --> Core
+    Web --> Projects
+    Web --> Content
+    Web --> Memory
+    Web --> Wiki
+    Web --> Work
+    Web --> Usage
+    Web --> Gateway
+    Web --> Monitor
+    LegacyWeb --> Core
+    LegacyWeb --> Obs
+    Core --> DB
+    Projects --> Core
+    Projects --> DB
+    Content --> Core
+    Content --> RAG
+    Content --> DB
+    RAG --> DB
+    RAG --> Models
+    Memory --> Content
+    Memory --> Wiki
+    Memory --> DB
+    Wiki --> Memory
+    Wiki --> RAG
+    Wiki --> Usage
+    Wiki --> DB
+    Work --> Core
+    Work --> Obs
+    Work --> Usage
+    Work --> DB
+    Usage --> DB
+    Usage --> CH
+    Usage --> Redis
+    Usage --> Models
+    Gateway --> Core
+    Gateway --> Usage
+    Gateway --> DB
+    Gateway --> Models
+    Monitor --> Work
+    Monitor --> Usage
+    Monitor --> Obs
+    Obs --> CH
+    Infra --> DB
+    Infra --> Redis
+    Infra --> Obs

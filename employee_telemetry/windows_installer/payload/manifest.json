@@ -1,0 +1,12 @@
+{
+  "package_name": "ai-monitor-universal",
+  "package_version": "2026-08-13-r18-shared-ccswitch-session",
+  "project_id": "dfaefd9a-8e5e-4775-bc18-e3d551c651e4",
+  "api_endpoint": "https://39.105.79.0",
+  "collector_endpoint": "https://39.105.79.0",
+  "trusted_root_ca_file": "smartbrain-root-ca.crt",
+  "default_email_domain": "local.dev",
+  "minimum_cc_switch_version": "3.12.2",
+  "chatgpt_web_extension_dir": "chatgpt-web-extension",
+  "desktop_chatgpt_personal_account_mode": "use_monitored_web_shortcut"
+}

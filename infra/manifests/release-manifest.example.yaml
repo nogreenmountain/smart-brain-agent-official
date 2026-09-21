@@ -1,0 +1,41 @@
+# Example only. No production values or secrets belong here.
+schema_version: 1
+release:
+  version: 2026.09.21-example
+  git_commit: "<commit-sha>"
+  source_repository: "smart-brain-agent"
+  migration_version: "<migration-version>"
+  manifest_sha256: "<generated-at-release-time>"
+
+profile:
+  name: lan
+  features:
+    web: true
+    api: true
+    postgres: true
+    redis: true
+    clickhouse: true
+    rag: false
+    wiki: true
+    member_wiki: true
+    ai_usage: true
+    ai_gateway: false
+    employee_monitor: false
+    public_access: false
+    tls: false
+
+requirements:
+  docker_compose: ">=2.20"
+  memory_gib: 8
+  disk_gib: 40
+  gpu: false
+
+images:
+  api: "<image>@sha256:<digest>"
+  web: "<image>@sha256:<digest>"
+  worker: "<image>@sha256:<digest>"
+
+rollback:
+  previous_manifest_required: true
+  database_backup_required: true
+  command: "smartbrain rollback --manifest <previous-manifest>"
