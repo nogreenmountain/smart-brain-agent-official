@@ -17,6 +17,9 @@ class _Result:
     def all(self):
         return self._rows
 
+    def first(self):
+        return self._rows[0] if self._rows else None
+
 
 class _FakeOrm:
     def __init__(self, *, existing_status: str | None = None, conversation_rows=None):
@@ -56,6 +59,10 @@ class _FakeOrm:
                     sequence_index=1,
                 ),
             ])
+        if "FROM public.project_conversation_records" in sql and "GROUP BY project_id" not in sql:
+            return _Result([types.SimpleNamespace(conversation_count=0, wiki_upload_count=0, pending_wiki_count=0, failed_wiki_count=0)])
+        if "FROM public.project_conversation_records" in sql and "GROUP BY project_id" in sql:
+            return _Result([])
         if "INSERT INTO public.ai_daily_work_logs" in sql:
             self.saved.append(params)
             return _Result([])

@@ -7,6 +7,8 @@ import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
 import { PageBody, PageHeader, PageShell } from '@/components/PageLayout';
 import { PersonalApiKeys } from '@/components/profile/PersonalApiKeys';
+import { ProjectAgentsPanel } from '@/components/project/ProjectAgentsPanel';
+import { PersonalUsageStats } from '@/components/profile/PersonalUsageStats';
 import {
   ApiError,
   changeMyPassword,
@@ -147,6 +149,7 @@ export default function ProfilePage() {
         <section className="lg:col-span-2">
           <PersonalApiKeys />
         </section>
+        <PersonalUsageStats />
         {me?.can_manage_projects === false && (
           <section className="rounded-lg border border-[#d7e0ec] bg-white shadow-[0_10px_24px_rgba(15,35,66,0.04)] lg:col-span-2">
             <div className="flex flex-wrap items-center gap-3 border-b border-[#d7e0ec] bg-[#f7faff] px-5 py-4">
@@ -217,6 +220,13 @@ export default function ProfilePage() {
                       <ProfileDatum label="创建日期" value={formatDate(selectedProject.created_at)} icon={<CalendarDays size={14} aria-hidden="true" />} />
                       <ProfileDatum label="结项状态" value={selectedProject.completed_at ? `已结项 · ${formatDate(selectedProject.completed_at)}` : '进行中'} />
                     </dl>
+                    <div className="border-t border-[#d7e0ec] p-5">
+                      <ProjectAgentsPanel
+                        projectId={selectedProject.id}
+                        projectName={selectedProject.name}
+                        canManage={selectedProject.role === 'owner' || selectedProject.role === 'admin'}
+                      />
+                    </div>
                   </div>
                 )}
               </div>

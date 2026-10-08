@@ -817,6 +817,24 @@ def _dispatch_department_migration(migration_id: uuid.UUID) -> None:
     ).start()
 
 
+def _initialize_project_agents_best_effort(orm: Session, *, project_id: uuid.UUID, project_name: str, user_id: uuid.UUID | None = None) -> None:
+    """Initialize AGENTS.md without making legacy project creation fragile.
+
+    The additive migration is deployed before the feature is enabled. The
+    savepoint keeps older installations able to create projects while they
+    are being upgraded, without hiding errors once the table exists.
+    """
+    try:
+        from .project_agents import initialize_agents
+        with orm.begin_nested():
+            initialize_agents(orm, project_id=project_id, project_name=project_name, user_id=user_id)
+    except Exception:
+        # The nested transaction has already rolled back. Keep the surrounding
+        # project transaction usable so the additive feature cannot block the
+        # legacy creation path during migration rollout.
+        return
+
+
 @router.post("/projects", response_model=ProjectSchema, status_code=201)
 def create_project(
     request: Request,
@@ -856,6 +874,7 @@ def create_project(
          "completed_at": body.completed_at},
     ).first()
     orm.commit()
+    _initialize_project_agents_best_effort(orm, project_id=new_id, project_name=body.name, user_id=user_id)
 
     # Auto-add caller as project owner
     orm.execute(
@@ -1067,6 +1086,12 @@ def review_project_request(
                 DO UPDATE SET role = 'owner'
             """),
             {"project_id": str(created_project_id), "user_id": pending.requester_id},
+        )
+        _initialize_project_agents_best_effort(
+            orm,
+            project_id=created_project_id,
+            project_name=pending.name,
+            user_id=pending.requester_id,
         )
 
     orm.execute(

@@ -47,7 +47,7 @@ describe('SmartBrain production runtime security contract', () => {
   it('hardens the deployed SmartBrain container filesystem and privileges', () => {
     const compose = readFileSync(`${appRoot}/compose.server.override.yaml`, 'utf8');
     const smartbrainService = compose.match(
-      /\n  smartbrain:\n([\s\S]*?)(?=\nvolumes:)/,
+      /\r?\n  smartbrain:\r?\n([\s\S]*?)(?=\r?\nvolumes:)/,
     )?.[1];
 
     expect(smartbrainService).toBeDefined();

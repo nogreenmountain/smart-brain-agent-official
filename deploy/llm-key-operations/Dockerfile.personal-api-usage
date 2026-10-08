@@ -1,0 +1,10 @@
+ARG BASE_IMAGE=smartbrain/api:ubuntu-2026.09.07-sentry-recursion-r1
+FROM ${BASE_IMAGE}
+
+USER 0:0
+COPY ai_usage.py /app/agentops/api/routes/v4/ai_usage.py
+COPY ai_chat.py /app/agentops/api/routes/v4/ai_chat.py
+RUN /app/.venv/bin/python -m py_compile \
+    /app/agentops/api/routes/v4/ai_usage.py \
+    /app/agentops/api/routes/v4/ai_chat.py
+USER 10001:10001

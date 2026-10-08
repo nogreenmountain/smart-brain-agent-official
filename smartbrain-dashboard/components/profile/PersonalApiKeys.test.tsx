@@ -4,15 +4,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PersonalApiKeys } from './PersonalApiKeys';
 
-const api = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), rename: vi.fn(), revoke: vi.fn(), status: vi.fn(), remove: vi.fn(), submit: vi.fn(), operation: vi.fn(), pending: vi.fn() }));
+const api = vi.hoisted(() => ({ list: vi.fn(), create: vi.fn(), rename: vi.fn(), revoke: vi.fn(), status: vi.fn(), remove: vi.fn(), submit: vi.fn(), operation: vi.fn(), pending: vi.fn(), keyRequests: vi.fn(), usage: vi.fn() }));
 vi.mock('@/lib/api', () => ({ listAIGatewayKeys: api.list, createAIGatewayKey: api.create,
   renameAIGatewayKey: api.rename, revokeAIGatewayKey: api.revoke, getMyKeyRequests: api.status,
-  deleteRevokedAIGatewayKey: api.remove, submitKeyRequest: api.submit, getAIGatewayOperation: api.operation, listAIGatewayOperations: api.pending }));
+  deleteRevokedAIGatewayKey: api.remove, submitKeyRequest: api.submit, listMyKeyRequests: api.keyRequests, getAIGatewayKeyUsage: api.usage, getAIGatewayOperation: api.operation, listAIGatewayOperations: api.pending }));
 
 const key = { id: 'key-1', label: 'Codex', masked_key: 'sbk_fixture…', is_active: true,
   created_at: '2026-09-07T04:00:00Z', last_used_at: null };
 
 describe('PersonalApiKeys', () => {
+  it('shows the production personal API request address for client setup', async () => {
+    render(<PersonalApiKeys />);
+    expect(await screen.findByLabelText('个人 API 请求地址')).toHaveValue(
+      'https://39.105.79.0/v4/personal-api/v1',
+    );
+    expect(screen.getByText(/不要在地址后追加/)).toHaveTextContent('/responses');
+  });
+
   it('keeps pending creation separate from keys and only reads its result', async () => {
     const user=userEvent.setup();
     api.create.mockResolvedValue({kind:'operation',operation_id:'op-1',credential_id:'key-1',status:'reconciling'});
@@ -59,6 +67,7 @@ describe('PersonalApiKeys', () => {
     vi.resetAllMocks();
     api.list.mockResolvedValue([]);
     api.pending.mockResolvedValue([]);
+    api.keyRequests.mockResolvedValue([]);
     api.status.mockResolvedValue({ allowed: 1, active: 0, requests: [] });
     api.remove.mockResolvedValue(undefined);
     api.create.mockResolvedValue({ ...key, key: 'sbk_fixture_only_once' });

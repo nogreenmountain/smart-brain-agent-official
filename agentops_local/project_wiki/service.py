@@ -704,6 +704,7 @@ PROPOSAL_PAGE_TYPES = {
     "background": "fact",
     "timeline_event": "fact",
     "reference": "note",
+    "conversation_record": "note",
 }
 
 

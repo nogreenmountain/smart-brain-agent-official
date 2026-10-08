@@ -148,7 +148,7 @@ class KnowledgeLedgerDocument(BaseModel):
 
 
 class KnowledgeLedgerResponse(BaseModel):
-    category: Literal["project_material", "project_wiki_source", "meeting_record"]
+    category: Literal["project_material", "project_wiki_source", "meeting_record", "conversation_record"]
     project: KnowledgeLedgerProject
     permissions: KnowledgeLedgerPermissions
     leaders: list[KnowledgeLedgerUser]
@@ -299,7 +299,7 @@ def _embed_asset(value: str) -> list[float] | None:
 def get_knowledge_ledger(
     request: Request,
     project_id: uuid.UUID,
-    category: Literal["project_material", "project_wiki_source", "meeting_record"] = "project_material",
+    category: Literal["project_material", "project_wiki_source", "meeting_record", "conversation_record"] = "project_material",
     uploader_user_id: uuid.UUID | None = None,
     approval_status: Literal["raw_uploaded", "pending_review", "approved", "rejected"] | None = None,
     uploaded_from: str | None = None,
@@ -369,6 +369,71 @@ def get_knowledge_ledger(
         for row in member_rows
         if row.role in {"owner", "admin"}
     ]
+
+    if category == "conversation_record":
+        conversation_filters = ["r.project_id = :project_id"]
+        conversation_params: dict[str, str] = {"project_id": str(project_id)}
+        if uploader_user_id is not None:
+            conversation_filters.append("r.user_id = :uploader_user_id")
+            conversation_params["uploader_user_id"] = str(uploader_user_id)
+        if approval_status == "approved":
+            conversation_filters.append("r.wiki_status = 'published'")
+        elif approval_status == "pending_review":
+            conversation_filters.append("r.wiki_status = 'pending'")
+        elif approval_status == "rejected":
+            conversation_filters.append("r.wiki_status = 'failed'")
+        if uploaded_from:
+            conversation_filters.append("r.created_at >= CAST(:uploaded_from AS timestamptz)")
+            conversation_params["uploaded_from"] = uploaded_from
+        if uploaded_to:
+            conversation_filters.append("r.created_at <= CAST(:uploaded_to AS timestamptz)")
+            conversation_params["uploaded_to"] = uploaded_to
+        rows = orm.execute(text(f"""
+            SELECT r.id::text AS asset_id, r.user_id::text AS uploaded_by_user_id,
+                   au.email AS uploaded_by_email, r.model, r.messages,
+                   r.created_at::text AS uploaded_at, r.wiki_status, r.wiki_error,
+                   r.wiki_page_id::text AS wiki_page_id
+            FROM public.project_conversation_records r
+            JOIN auth.users au ON au.id=r.user_id
+            WHERE {' AND '.join(conversation_filters)}
+            ORDER BY r.created_at DESC
+        """), conversation_params).all()
+        uploader_rows = orm.execute(text("""
+            SELECT DISTINCT r.user_id::text AS user_id, au.email
+            FROM public.project_conversation_records r JOIN auth.users au ON au.id=r.user_id
+            WHERE r.project_id=:project_id ORDER BY au.email
+        """), {"project_id": str(project_id)}).all()
+        documents = []
+        summary = KnowledgeLedgerSummary()
+        for row in rows:
+            status = "approved" if row.wiki_status == "published" else "pending_review" if row.wiki_status == "pending" else "rejected"
+            summary.raw_document_count += 1
+            if status == "approved": summary.approved_count += 1
+            elif status == "pending_review": summary.pending_count += 1
+            else: summary.rejected_count += 1
+            if row.uploaded_at and (summary.latest_uploaded_at is None or str(row.uploaded_at) > summary.latest_uploaded_at):
+                summary.latest_uploaded_at = str(row.uploaded_at)
+            messages = row.messages if isinstance(row.messages, list) else []
+            documents.append(KnowledgeLedgerDocument(
+                asset_id=uuid.UUID(str(row.asset_id)), asset_type="project_wiki",
+                document_id=uuid.UUID(str(row.wiki_page_id)) if row.wiki_page_id else None,
+                filename=f"conversation-{row.asset_id}.md", display_name=f"AI 对话 · {row.model or 'unknown'}",
+                format="md", size_bytes=sum(len(str(item.get('content', ''))) for item in messages if isinstance(item, dict)),
+                status="ready" if status == "approved" else status, chunk_count=1,
+                error_message=row.wiki_error, uploaded_by=_ledger_user(row.uploaded_by_user_id, row.uploaded_by_email),
+                uploaded_at=str(row.uploaded_at), approval_status=status,
+            ))
+        return KnowledgeLedgerResponse(
+            category=category,
+            project=KnowledgeLedgerProject(id=uuid.UUID(str(project_row.id)), name=project_row.name,
+                environment=project_row.environment, department_id=project_row.department_id,
+                created_at=str(project_row.created_at) if project_row.created_at else None,
+                completed_at=str(project_row.completed_at) if project_row.completed_at else None),
+            permissions=KnowledgeLedgerPermissions(can_review=can_review, can_manage=can_manage, can_delete=can_delete),
+            leaders=leaders,
+            uploaders=[KnowledgeLedgerUser(user_id=uuid.UUID(str(item.user_id)), email=item.email) for item in uploader_rows],
+            summary=summary, documents=documents,
+        )
 
     if category == "meeting_record":
         meeting_filters = ["meeting.project_id = :project_id"]

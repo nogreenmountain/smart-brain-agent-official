@@ -19,3 +19,12 @@ def test_gateway_content_projection_does_not_require_optional_daily_access_modul
     module = importlib.import_module("agentops_local.ai_usage.gateway_content")
     assert module.INLINE_MESSAGE_BYTES > 0
     assert "event_payload" in module.METADATA_SQL
+
+
+def test_personal_gateway_source_and_proxy_are_present() -> None:
+    scope = (Path(__file__).parents[1] / "api" / "personal_gateway_scope.py").read_text(encoding="utf-8")
+    proxy = (Path(__file__).parents[1] / "api" / "personal_gateway_proxy.py").read_text(encoding="utf-8")
+    assert "app.api_route('/v1/{path:path}'" in scope
+    assert "route._gateway_claims" in scope
+    assert "_ingest_gateway_events" in proxy
+    assert "authorization" in proxy

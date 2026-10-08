@@ -29,7 +29,7 @@
 - source commit：`8280adda3846af082a386a2c3fd20da8c01dca4a`
 - snapshot type：working-tree overlay on committed baseline
 - private operational logs：未复制
-- production environment：未访问、未修改
+- production environment：2026-10-08 已只读核对，未修改；详见状态入口
 
 ## 推荐部署原则
 
@@ -56,3 +56,9 @@
 ## 重要限制
 
 当前 snapshot 仍保留历史兼容代码和候选实现。第一次在新电脑部署时应使用 `minimal` 或隔离的 `lan` 环境，不应直接连接生产数据库、不应直接启用公网入口、不应自动启用真实模型或 Personal Gateway。
+
+## 开发和生产状态入口
+
+先读 [当前状态](docs/CURRENT.md)，再读 [2026-10-08 生产快照](docs/ops/server-state-20261008.md)、[本地开发快照](docs/ops/local-workspace-state-20261008.md)及对应任务。记录更新时间与生产核对时间分开。
+
+本次同步保存源码和只读版本清单，没有发布到生产。开发源码和线上镜像存在差异，验证范围和未完成项写在任务记录中。公开根 AGENTS.md 只保存接续规则。

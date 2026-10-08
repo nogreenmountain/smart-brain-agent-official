@@ -114,7 +114,7 @@ def build_compiler_prompt(
 - contradiction=true 的内容会进入审批。
 - 高价值且低风险内容会由确定性规则标为 auto_apply。
 - 临时状态、纯闲聊、重复信息、敏感信息必须标记 ephemeral 或 sensitive。
-- memory_kind 只能使用：workflow_template、failure_case、success_case、strategy、retrospective、decision_record、checklist、background、timeline_event、reference。
+- memory_kind 只能使用：workflow_template、failure_case、success_case、strategy、retrospective、decision_record、checklist、background、timeline_event、reference、conversation_record。
 - 失败案例必须包含：背景、现象、无效尝试、根因、解决方式、经验和适用边界。
 - 流程模板必须包含：触发条件、输入、步骤、输出、验收检查和失败回退。
 - 策略必须包含：适用背景、前提假设、取舍、执行方式、衡量指标和失效条件。

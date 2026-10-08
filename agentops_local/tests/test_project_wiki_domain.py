@@ -18,6 +18,24 @@ def _load_domain():
 
 
 class ProjectWikiDomainTests(unittest.TestCase):
+
+    def test_conversation_record_is_a_supported_read_only_memory_kind(self):
+        domain = _load_domain()
+        candidate = domain.KnowledgeCandidate(
+            title="成员对话记录",
+            page_type="note",
+            memory_kind="conversation_record",
+            summary="Gateway 对话",
+            markdown_content="正文",
+            usefulness=1,
+            confidence=1,
+            source_ids=["gateway:req-1"],
+            link_titles=[],
+            contradiction=False,
+            sensitive=False,
+            ephemeral=False,
+        )
+        self.assertEqual(candidate.memory_kind, "conversation_record")
     def test_high_value_procedure_is_auto_applied(self) -> None:
         domain = _load_domain()
 

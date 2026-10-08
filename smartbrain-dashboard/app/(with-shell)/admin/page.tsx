@@ -52,6 +52,7 @@ import {
   getMe,
   getProjectDepartmentMigration,
   listProjectCatalog,
+  listProjects,
   listProjectMemoryDepartments,
   listProjectMemoryDrafts,
   listProjectMemoryReviewQueue,
@@ -67,6 +68,9 @@ import {
   updateProjectMemoryDepartment,
 } from '@/lib/api';
 import { ProjectMembersPanel } from '@/components/management-workspace/ProjectMembersPanel';
+import { ProjectAgentsPanel } from '@/components/project/ProjectAgentsPanel';
+import { WikiUploadPieChart } from '@/components/project/WikiUploadPieChart';
+import { GatewayKeyRequestsPanel } from '@/components/management-workspace/GatewayKeyRequestsPanel';
 import { TeamDirectoryPanel } from '@/components/management-workspace/TeamDirectoryPanel';
 import {
   moveDepartmentWithinSiblings,
@@ -146,6 +150,7 @@ export default function AdminPage() {
   const [me, setMe] = useState<Me | null>(null);
   const [departments, setDepartments] = useState<Department[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [myProjects, setMyProjects] = useState<Project[]>([]);
   const [departmentId, setDepartmentId] = useState<DepartmentId>('research');
   const [projectId, setProjectId] = useState('');
   const [drafts, setDrafts] = useState<ProjectMemoryDraft[]>([]);
@@ -260,15 +265,17 @@ export default function AdminPage() {
           router.replace('/profile');
           return;
         }
-        const [departmentRows, projectRows, reviewRows] = await Promise.all([
+        const [departmentRows, projectRows, reviewRows, myProjectRows] = await Promise.all([
           listProjectMemoryDepartments(true),
           listProjectCatalog(),
           listProjectMemoryReviewQueue(),
+          listProjects().catch(() => []),
         ]);
         if (!active) return;
         setMe(meResult);
         setDepartments(departmentRows);
         setProjects(projectRows);
+        setMyProjects(myProjectRows);
         setReviewQueue(reviewRows);
         setSelectedDraftId(reviewRows[0]?.id || '');
         const firstDepartment = departmentRows.find((department) => department.allows_projects !== false)?.id || 'research';
@@ -750,6 +757,49 @@ export default function AdminPage() {
       ) : <>
       <main className="flex-1 overflow-y-auto px-4 py-3 md:px-6">
         <div className="mx-auto grid max-w-[1440px] gap-3">
+          {me?.email.trim().toLowerCase() === 'hanshangbo@local.dev' && <GatewayKeyRequestsPanel />}
+          <section data-testid="my-projects-card" className="rounded-lg border border-[#d7e0ec] bg-white shadow-[0_10px_24px_rgba(15,35,66,0.04)]">
+            <div className="border-b border-[#d7e0ec] bg-[#f7faff] p-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600">
+                  <FolderKanban size={20} aria-hidden={true} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-xl font-semibold leading-tight text-[#10213e]">我的项目</h2>
+                  <p className="mt-1 text-sm text-[#6e7d97]">当前账号直接参与的项目（只读）。</p>
+                </div>
+              </div>
+            </div>
+            {loading ? (
+              <div className="p-5 text-center">
+                <LoadingDots />
+              </div>
+            ) : myProjects.length === 0 ? (
+              <div className="p-5">
+                <EmptyState title="暂无参与项目" hint="当前账号还没有直接参与的项目。" />
+              </div>
+            ) : (
+              <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+                {myProjects.map((project) => (
+                  <button
+                    key={project.id}
+                    type="button"
+                    onClick={() => {
+                      setDepartmentId((project.department_id || 'research') as DepartmentId);
+                      setProjectId(project.id);
+                    }}
+                    className="min-w-0 rounded-lg border border-[#d7e0ec] bg-white p-4 text-left transition-colors hover:border-brand-500/35 hover:bg-[#f7faff]"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="min-w-0 break-words text-sm font-semibold text-[#10213e]">{project.name}</span>
+                      <ProjectStatusBadge completedAt={project.completed_at} />
+                    </div>
+                    <div className="mt-2 text-xs text-[#6e7d97]">我的角色：{projectRoleLabel(project.role)}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
           <section className="grid grid-cols-1 items-stretch gap-3 xl:grid-cols-[minmax(300px,0.82fr)_minmax(0,1.35fr)]">
               <div data-project-list-card className="h-full overflow-hidden rounded-lg border border-[#d7e0ec] bg-white shadow-[0_10px_24px_rgba(15,35,66,0.04)]">
               <div className="border-b border-[#d7e0ec] bg-[#f7faff] p-4">
@@ -935,6 +985,9 @@ export default function AdminPage() {
                       <Metric title="项目角色" value={projectRoleLabel(selectedProject.role)} detail="可提交项目资料" icon={<FileText size={17} />} />
                     )}
                   </div>
+                  <div className="mt-4">
+                    <WikiUploadPieChart projectId={selectedProject.id} />
+                  </div>
                   {selectedProjectCanManage && (
                     <form onSubmit={saveProject} className="mt-4 grid gap-3 border-t border-[#e3e9f1] pt-4">
                       <div className="grid gap-3 sm:grid-cols-[minmax(220px,1fr)_180px]">
@@ -985,6 +1038,15 @@ export default function AdminPage() {
                         )}
                       </div>
                     </form>
+                  )}
+                  {selectedProject && (
+                    <div className="mt-5 border-t border-[#e3e9f1] pt-5">
+                      <ProjectAgentsPanel
+                        projectId={selectedProject.id}
+                        projectName={selectedProject.name}
+                        canManage={selectedProjectCanManage}
+                      />
+                    </div>
                   )}
                   {selectedProjectCanDelete && deleteProjectOpen && (
                     <div className="mt-4 rounded-lg border border-[#df5a67]/30 bg-[#fff7f7] p-4">

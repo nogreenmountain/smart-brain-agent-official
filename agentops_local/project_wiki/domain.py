@@ -21,6 +21,7 @@ MEMORY_KINDS = {
     "background",
     "timeline_event",
     "reference",
+    "conversation_record",
 }
 
 PAGE_TYPE_DEFAULT_MEMORY_KIND = {

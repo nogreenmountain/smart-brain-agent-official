@@ -203,17 +203,48 @@ def _store_generation(
         }
         for item in generation.work_items
     ]
+    stats = orm.execute(text("""
+        SELECT count(*)::int AS conversation_count,
+               count(*) FILTER (WHERE wiki_status='published')::int AS wiki_upload_count,
+               count(*) FILTER (WHERE wiki_status='pending')::int AS pending_wiki_count,
+               count(*) FILTER (WHERE wiki_status='failed')::int AS failed_wiki_count
+        FROM public.project_conversation_records
+        WHERE employee_id=:employee_id
+          AND created_at >= :start_utc AND created_at < :end_utc
+    """), {
+        "employee_id": employee_id,
+        "start_utc": _utc_bounds(work_date)[0],
+        "end_utc": _utc_bounds(work_date)[1],
+    }).first()
+    project_rows = orm.execute(text("""
+        SELECT project_id::text AS project_id,
+               jsonb_build_object(
+                   'conversation_count', count(*)::int,
+                   'wiki_upload_count', count(*) FILTER (WHERE wiki_status='published')::int
+               ) AS project_stats
+        FROM public.project_conversation_records
+        WHERE employee_id=:employee_id
+          AND created_at >= :start_utc AND created_at < :end_utc
+        GROUP BY project_id
+    """), {
+        "employee_id": employee_id,
+        "start_utc": _utc_bounds(work_date)[0],
+        "end_utc": _utc_bounds(work_date)[1],
+    }).all()
+    project_breakdown = {str(row.project_id): dict(row.project_stats or {}) for row in project_rows}
     orm.execute(
         text("""
             INSERT INTO public.ai_daily_work_logs (
                 employee_id, employee_name, work_date, timezone, status,
                 report_markdown, work_items, source_session_ids, source_count,
-                model, generated_at, updated_at
+                model, conversation_count, wiki_upload_count, pending_wiki_count,
+                failed_wiki_count, project_breakdown, generated_at, updated_at
             ) VALUES (
                 :employee_id, :employee_name, :work_date, 'Asia/Shanghai', :status,
                 :report_markdown, CAST(:work_items AS jsonb),
                 CAST(:source_session_ids AS jsonb), :source_count,
-                :model, now(), now()
+                :model, :conversation_count, :wiki_upload_count, :pending_wiki_count,
+                :failed_wiki_count, CAST(:project_breakdown AS jsonb), now(), now()
             )
             ON CONFLICT (employee_id, work_date) DO UPDATE SET
                 employee_name = EXCLUDED.employee_name,
@@ -223,6 +254,11 @@ def _store_generation(
                 source_session_ids = EXCLUDED.source_session_ids,
                 source_count = EXCLUDED.source_count,
                 model = EXCLUDED.model,
+                conversation_count = EXCLUDED.conversation_count,
+                wiki_upload_count = EXCLUDED.wiki_upload_count,
+                pending_wiki_count = EXCLUDED.pending_wiki_count,
+                failed_wiki_count = EXCLUDED.failed_wiki_count,
+                project_breakdown = EXCLUDED.project_breakdown,
                 generated_at = EXCLUDED.generated_at,
                 updated_at = now()
         """),
@@ -238,6 +274,11 @@ def _store_generation(
             ),
             "source_count": len(generation.source_session_ids),
             "model": _model_name(),
+            "conversation_count": int(stats.conversation_count or 0) if stats else 0,
+            "wiki_upload_count": int(stats.wiki_upload_count or 0) if stats else 0,
+            "pending_wiki_count": int(stats.pending_wiki_count or 0) if stats else 0,
+            "failed_wiki_count": int(stats.failed_wiki_count or 0) if stats else 0,
+            "project_breakdown": json.dumps(project_breakdown, ensure_ascii=False),
         },
     )
 

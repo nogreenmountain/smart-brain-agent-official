@@ -93,6 +93,49 @@ class GatewayKeyRename(GatewayKeyCreate):
     label: str = Field(..., min_length=1, max_length=100)
 
 
+class GatewayKeyRequestCreate(BaseModel):
+    requested_total: int = Field(..., ge=2, le=20)
+    reason: str = Field(..., min_length=1, max_length=2000)
+
+    @field_validator('reason')
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError('申请原因不能为空')
+        return value
+
+
+class GatewayKeyRequestReview(BaseModel):
+    decision: Literal['approve', 'reject']
+    comment: str = Field('', max_length=2000)
+
+
+class GatewayKeyRequestResponse(BaseModel):
+    id: uuid.UUID
+    user_id: uuid.UUID
+    requested_total: int
+    reason: str
+    status: Literal['pending', 'approved', 'rejected', 'cancelled']
+    reviewed_by: uuid.UUID | None = None
+    review_comment: str | None = None
+    created_at: datetime
+    reviewed_at: datetime | None = None
+
+
+class GatewayKeyUsageResponse(BaseModel):
+    key_id: uuid.UUID
+    request_count: int
+    success_count: int
+    failure_count: int
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    token_status: dict[str, int]
+    models: list[dict[str, Any]]
+    last_used_at: datetime | None = None
+
+
 class GatewayConversationMessage(BaseModel):
     role: str = Field(..., min_length=1, max_length=20)
     content: str = Field(..., min_length=1, max_length=1_000_000)
@@ -418,6 +461,147 @@ def list_gateway_keys(request: Request, orm: Session = Depends(get_orm_session))
     return result
 
 
+def _key_request_from_row(row) -> GatewayKeyRequestResponse:
+    return GatewayKeyRequestResponse(
+        id=uuid.UUID(str(row.id)), user_id=uuid.UUID(str(row.user_id)),
+        requested_total=int(row.requested_total), reason=str(row.reason), status=str(row.status),
+        reviewed_by=uuid.UUID(str(row.reviewed_by)) if row.reviewed_by else None,
+        review_comment=row.review_comment, created_at=row.created_at, reviewed_at=row.reviewed_at,
+    )
+
+
+@router.post('/key-requests', response_model=GatewayKeyRequestResponse, status_code=201)
+def submit_gateway_key_request(
+    body: GatewayKeyRequestCreate,
+    request: Request,
+    orm: Session = Depends(get_orm_session),
+):
+    user_id = _session_user(request)
+    pending = orm.execute(text("""
+        SELECT id FROM public.ai_gateway_key_requests
+        WHERE user_id=:uid AND status='pending'
+    """), {'uid': str(user_id)}).first()
+    if pending:
+        raise HTTPException(status_code=409, detail='已有待审批的 API Key 申请')
+    row = orm.execute(text("""
+        INSERT INTO public.ai_gateway_key_requests(user_id, requested_total, requested_limit, reason)
+        VALUES (:uid, :requested_total, :requested_total, :reason)
+        RETURNING id, user_id, requested_total, reason, status, reviewed_by,
+                  review_comment, created_at, reviewed_at
+    """), {'uid': str(user_id), 'requested_total': body.requested_total, 'reason': body.reason}).first()
+    orm.commit()
+    return _key_request_from_row(row)
+
+
+@router.get('/key-requests', response_model=list[GatewayKeyRequestResponse])
+def list_gateway_key_requests(request: Request, orm: Session = Depends(get_orm_session)):
+    user_id = _session_user(request)
+    rows = orm.execute(text("""
+        SELECT id, user_id, requested_total, reason, status, reviewed_by,
+               review_comment, created_at, reviewed_at
+        FROM public.ai_gateway_key_requests
+        WHERE user_id=:uid ORDER BY created_at DESC
+    """), {'uid': str(user_id)}).all()
+    return [_key_request_from_row(row) for row in rows]
+
+
+def _require_key_request_reviewer(orm: Session, user_id: uuid.UUID) -> None:
+    row = orm.execute(text("""
+        SELECT lower(au.email) AS email, COALESCE(pu.is_system_admin, false) AS is_system_admin
+        FROM auth.users au LEFT JOIN public.users pu ON pu.id=au.id
+        WHERE au.id=:uid
+    """), {'uid': str(user_id)}).first()
+    if not row or not bool(row.is_system_admin) or str(row.email) != 'hanshangbo@local.dev':
+        raise HTTPException(status_code=403, detail='only hanshangbo can review API Key requests')
+
+
+@router.get('/key-requests/review', response_model=list[GatewayKeyRequestResponse])
+def list_gateway_key_request_review(request: Request, orm: Session = Depends(get_orm_session)):
+    reviewer = _session_user(request)
+    _require_key_request_reviewer(orm, reviewer)
+    rows = orm.execute(text("""
+        SELECT id, user_id, requested_total, reason, status, reviewed_by,
+               review_comment, created_at, reviewed_at
+        FROM public.ai_gateway_key_requests
+        WHERE status='pending' ORDER BY created_at ASC
+    """)).all()
+    return [_key_request_from_row(row) for row in rows]
+
+
+@router.post('/key-requests/{request_id}/review', response_model=GatewayKeyRequestResponse)
+def review_gateway_key_request(
+    request_id: uuid.UUID,
+    body: GatewayKeyRequestReview,
+    request: Request,
+    orm: Session = Depends(get_orm_session),
+):
+    reviewer = _session_user(request)
+    _require_key_request_reviewer(orm, reviewer)
+    row = orm.execute(text("""
+        SELECT id, user_id, requested_total, reason, status, reviewed_by,
+               review_comment, created_at, reviewed_at
+        FROM public.ai_gateway_key_requests
+        WHERE id=:id FOR UPDATE
+    """), {'id': str(request_id)}).first()
+    if not row:
+        raise HTTPException(status_code=404, detail='API Key 申请不存在')
+    if row.status != 'pending':
+        raise HTTPException(status_code=409, detail='API Key 申请已处理')
+    status = 'approved' if body.decision == 'approve' else 'rejected'
+    if status == 'approved':
+        orm.execute(text("""
+            INSERT INTO public.ai_gateway_key_allowances(user_id, max_active_keys)
+            VALUES (:uid, :total)
+            ON CONFLICT (user_id) DO UPDATE SET max_active_keys=GREATEST(
+                public.ai_gateway_key_allowances.max_active_keys, EXCLUDED.max_active_keys)
+        """), {'uid': str(row.user_id), 'total': int(row.requested_total)})
+    updated = orm.execute(text("""
+        UPDATE public.ai_gateway_key_requests
+        SET status=:status, reviewed_by=:reviewer, review_comment=NULLIF(btrim(:comment), ''), reviewed_at=now()
+        WHERE id=:id
+        RETURNING id, user_id, requested_total, reason, status, reviewed_by,
+                  review_comment, created_at, reviewed_at
+    """), {'id': str(request_id), 'status': status, 'reviewer': str(reviewer), 'comment': body.comment}).first()
+    orm.commit()
+    return _key_request_from_row(updated)
+
+
+@router.get('/keys/{key_id}/usage', response_model=GatewayKeyUsageResponse)
+def gateway_key_usage(key_id: uuid.UUID, request: Request, orm: Session = Depends(get_orm_session)):
+    user_id = _session_user(request)
+    owned = orm.execute(text("SELECT id FROM public.ai_gateway_keys WHERE id=:kid AND user_id=:uid"), {'kid': str(key_id), 'uid': str(user_id)}).first()
+    if not owned:
+        raise HTTPException(status_code=404, detail='gateway key not found')
+    summary = orm.execute(text("""
+        SELECT count(*)::int AS request_count,
+               count(*) FILTER (WHERE status_code < 400)::int AS success_count,
+               count(*) FILTER (WHERE status_code >= 400)::int AS failure_count,
+               COALESCE(sum(input_tokens),0)::int AS input_tokens,
+               COALESCE(sum(output_tokens),0)::int AS output_tokens,
+               COALESCE(sum(total_tokens),0)::int AS total_tokens,
+               max(completed_at) AS last_used_at
+        FROM public.ai_gateway_events WHERE key_id=:kid AND user_id=:uid
+    """), {'kid': str(key_id), 'uid': str(user_id)}).first()
+    statuses = orm.execute(text("""
+        SELECT CASE WHEN usage_missing THEN 'unknown' ELSE 'gateway_reported' END AS status, count(*)::int AS count
+        FROM public.ai_gateway_events WHERE key_id=:kid AND user_id=:uid GROUP BY 1
+    """), {'kid': str(key_id), 'uid': str(user_id)}).all()
+    models = orm.execute(text("""
+        SELECT model, count(*)::int AS count, COALESCE(sum(total_tokens),0)::int AS total_tokens
+        FROM public.ai_gateway_events WHERE key_id=:kid AND user_id=:uid
+        GROUP BY model ORDER BY count DESC, model
+    """), {'kid': str(key_id), 'uid': str(user_id)}).all()
+    return GatewayKeyUsageResponse(
+        key_id=key_id, request_count=int(summary.request_count or 0),
+        success_count=int(summary.success_count or 0), failure_count=int(summary.failure_count or 0),
+        input_tokens=int(summary.input_tokens or 0), output_tokens=int(summary.output_tokens or 0),
+        total_tokens=int(summary.total_tokens or 0),
+        token_status={str(row.status): int(row.count) for row in statuses},
+        models=[{'model': str(row.model or 'unknown'), 'count': int(row.count), 'total_tokens': int(row.total_tokens)} for row in models],
+        last_used_at=summary.last_used_at,
+    )
+
+
 @router.get('/operations/{operation_id}')
 def get_gateway_operation(operation_id: uuid.UUID, request: Request,
                           orm: Session = Depends(get_orm_session)):
@@ -591,7 +775,7 @@ def _materialize_gateway_conversation(
         raise ValueError("complete Gateway conversation context is required")
     chat_body = AIChatIngestRequest(
         project_id=event.project_id,
-        source="ai_gateway",
+        source="personal_api" if event.app_type == "personal_api" else "ai_gateway",
         conversation_id=event.conversation_id,
         title=event.title or "AI Gateway 会话",
         task_id=event.task_id,
@@ -617,6 +801,191 @@ def _materialize_gateway_conversation(
         body=chat_body,
         commit=False,
     )
+
+
+def _materialize_personal_api_conversation(
+    orm: Session,
+    *,
+    claim: Any,
+    employee_id: str,
+    employee_name: str,
+    event: GatewayEvent,
+    usage: dict[str, int],
+) -> uuid.UUID:
+    """Create the projectless work-record projection for a server proxy call.
+
+    Personal API keys are intentionally not bound to a project.  The existing
+    work-record schema requires a UUID, so the reserved all-zero UUID is used
+    only as the explicit "no project" sentinel (the UI already renders that
+    case as AI Monitor/无项目归属).
+    """
+    messages = event.messages or [
+        GatewayConversationMessage(
+            role="assistant",
+            content="个人 API 请求已完成，但上游未返回可记录的正文。",
+        )
+    ]
+    chat_body = AIChatIngestRequest(
+        project_id=uuid.UUID(int=0),
+        source="personal_api",
+        conversation_id=event.conversation_id or event.event_id,
+        title=event.title or "个人 API 请求",
+        task_id=event.task_id or "personal-api",
+        task_title=event.task_title or "个人 API",
+        model=event.resolved_model or event.model or event.requested_model,
+        status="ok" if 200 <= event.status_code < 400 else "error",
+        started_at=event.started_at,
+        ended_at=event.completed_at,
+        duration_ms=event.latency_ms,
+        prompt_tokens=usage["input_tokens"],
+        completion_tokens=usage["output_tokens"],
+        total_tokens=usage["total_tokens"],
+        error_count=0 if 200 <= event.status_code < 400 else 1,
+        trace_id=event.trace_id,
+        messages=[AIChatMessageInput(**message.model_dump()) for message in messages],
+        metadata={
+            "gateway_instance_id": event.gateway_instance_id,
+            "gateway_event_id": event.event_id,
+            "personal_api": True,
+        },
+    )
+    return _store_chat_session(
+        orm,
+        user_id=claim.user_id,
+        employee_id=employee_id,
+        employee_name=employee_name,
+        body=chat_body,
+        commit=False,
+    )
+
+
+def _materialize_project_conversation_record(
+    orm: Session,
+    *,
+    claim: Any,
+    employee_id: str,
+    employee_name: str,
+    event: GatewayEvent,
+    usage: dict[str, int],
+) -> None:
+    """Persist the canonical project conversation and publish a Wiki page.
+
+    The nested transaction keeps the existing gateway event usable while an
+    older database is being upgraded. Once the additive migration is present,
+    successful completed requests become immutable, idempotent conversation
+    records and one Wiki page of memory_kind=conversation_record.
+    """
+    if not event.project_id or not event.request_id or not event.messages:
+        return
+    messages = [
+        {"role": item.role, "content": item.content, "created_at": item.created_at.isoformat() if item.created_at else None}
+        for item in event.messages
+        if item.role in {"user", "assistant"}
+    ]
+    if not messages:
+        return
+    token_status = "unknown" if usage.get("usage_missing") else "gateway_reported"
+    record_id = None
+    try:
+        with orm.begin_nested():
+            row = orm.execute(text("""
+                INSERT INTO public.project_conversation_records
+                    (request_id, project_id, user_id, employee_id, employee_name, model,
+                     started_at, completed_at, input_tokens, output_tokens, total_tokens,
+                     token_status, messages, wiki_status)
+                VALUES (:request_id, :project_id, :user_id, :employee_id, :employee_name, :model,
+                        :started_at, :completed_at, :input_tokens, :output_tokens, :total_tokens,
+                        :token_status, CAST(:messages AS jsonb), :wiki_status)
+                ON CONFLICT (project_id, request_id) DO UPDATE SET
+                    updated_at=now()
+                RETURNING id
+            """), {
+                "request_id": event.request_id, "project_id": str(event.project_id),
+                "user_id": str(claim.user_id), "employee_id": employee_id,
+                "employee_name": employee_name, "model": event.resolved_model or event.model or "unknown",
+                "started_at": event.started_at, "completed_at": event.completed_at,
+                "input_tokens": usage["input_tokens"], "output_tokens": usage["output_tokens"],
+                "total_tokens": usage["total_tokens"], "token_status": token_status,
+                "messages": json.dumps(messages, ensure_ascii=False),
+                "wiki_status": "pending",
+            }).first()
+            record_id = row.id if row else None
+            if record_id:
+                orm.execute(text("""
+                    UPDATE public.project_conversation_records
+                    SET attempt_count=attempt_count + 1, updated_at=now()
+                    WHERE id=:record_id
+                """), {"record_id": str(record_id)})
+                orm.execute(text("""
+                    INSERT INTO public.project_conversation_record_attempts(record_id, status)
+                    VALUES (:record_id, 'pending')
+                """), {"record_id": str(record_id)})
+    except Exception:
+        return
+    if not record_id or not event.content_complete:
+        return
+    if event.status_code >= 400:
+        try:
+            with orm.begin_nested():
+                orm.execute(text("""
+                    UPDATE public.project_conversation_records
+                    SET wiki_status='failed', wiki_error=:error, updated_at=now()
+                    WHERE id=:record_id
+                """), {"record_id": str(record_id), "error": event.error_message or f"gateway status {event.status_code}"})
+                orm.execute(text("""
+                    UPDATE public.project_conversation_record_attempts
+                    SET status='failed', error_message=:error
+                    WHERE id=:record_id AND status='pending'
+                """), {"record_id": str(record_id), "error": event.error_message or f"gateway status {event.status_code}"})
+        except Exception:
+            pass
+        return
+    title = event.title or f"{employee_name} 的 AI 对话"
+    markdown = "\n\n".join(f"### {item['role']}\n{item['content']}" for item in messages)
+    try:
+        with orm.begin_nested():
+            page = orm.execute(text("""
+                INSERT INTO public.project_wiki_pages
+                    (project_id, page_key, title, page_type, status, summary, markdown_content,
+                     usefulness, confidence, memory_kind, tags, verification_status,
+                     verified_by_user_id, verified_at, created_by_user_id)
+                VALUES (:project_id, :page_key, :title, 'note', 'active', :summary, :markdown,
+                        1, 1, 'conversation_record', ARRAY['对话记录','gateway'], 'verified',
+                        :user_id, now(), :user_id)
+                ON CONFLICT (project_id, page_key) DO UPDATE SET updated_at=now()
+                RETURNING id
+            """), {
+                "project_id": str(event.project_id), "page_key": f"conversation:{event.request_id}",
+                "title": title[:500], "summary": f"{employee_name} · {event.model or 'unknown'}",
+                "markdown": markdown[:2_000_000], "user_id": str(claim.user_id),
+            }).first()
+            if page:
+                orm.execute(text("""
+                    UPDATE public.project_conversation_records
+                    SET wiki_status='published', wiki_page_id=:page_id, updated_at=now()
+                    WHERE id=:record_id
+                """), {"page_id": str(page.id), "record_id": str(record_id)})
+                orm.execute(text("""
+                    UPDATE public.project_conversation_record_attempts
+                    SET status='published'
+                    WHERE record_id=:record_id AND status='pending'
+                """), {"record_id": str(record_id)})
+    except Exception:
+        # Preserve a failed attempt for a later Company Memory retry worker.
+        try:
+            with orm.begin_nested():
+                orm.execute(text("""
+                    UPDATE public.project_conversation_records
+                    SET wiki_status='failed', wiki_error=:error, updated_at=now()
+                    WHERE id=:record_id
+                """), {"record_id": str(record_id), "error": "Wiki conversation publish failed"})
+                orm.execute(text("""
+                    UPDATE public.project_conversation_record_attempts
+                    SET status='failed', error_message=:error
+                    WHERE record_id=:record_id AND status='pending'
+                """), {"record_id": str(record_id), "error": "Wiki conversation publish failed"})
+        except Exception:
+            pass
 
 
 @device_router.post("/events", status_code=202)
@@ -736,6 +1105,17 @@ def _ingest_gateway_events(claim: Any, body: GatewayEventBatch, orm: Session):
                     event=event, usage=usage,
                 )
                 orm.execute(text("UPDATE public.ai_gateway_events SET chat_session_id=:session_id, conversation_id=:conversation_id, context_complete=true, content_complete=true, content_sync_status='synced' WHERE id=:id"), {"session_id": str(session_id), "conversation_id": event.conversation_id, "id": str(row.id)})
+            elif event.app_type == "personal_api" and event.messages:
+                session_id = _materialize_personal_api_conversation(
+                    orm, claim=claim, employee_id=employee_id, employee_name=employee_name,
+                    event=event, usage=usage,
+                )
+                orm.execute(text("UPDATE public.ai_gateway_events SET chat_session_id=:session_id, content_complete=true, content_sync_status='synced' WHERE id=:id"), {"session_id": str(session_id), "id": str(row.id)})
+            if event.project_id and event.content_complete and event.messages:
+                _materialize_project_conversation_record(
+                    orm, claim=claim, employee_id=employee_id, employee_name=employee_name,
+                    event=event, usage=usage,
+                )
     orm.execute(text("UPDATE public.ai_gateway_keys SET last_used_at=now() WHERE id=:id"), {"id": str(claim.id)})
     if dates:
         orm.execute(text("SELECT public.refresh_ai_usage_leaderboard_daily(CAST(:dates AS date[]))"), {"dates": sorted(dates)})

@@ -7,7 +7,6 @@ import { AIWorkspacePage } from './AIWorkspacePage';
 vi.mock('./AIRecordsPanel', () => ({ default: () => <div>records panel</div> }));
 vi.mock('./AILeaderboardPanel', () => ({ default: () => <div>leaderboard panel</div> }));
 vi.mock('./AIWorklogsPanel', () => ({ default: () => <div>logs panel</div> }));
-vi.mock('./AIMonitorPanel', () => ({ default: () => <div>monitor panel</div> }));
 
 describe('AIWorkspacePage', () => {
   beforeEach(() => {
@@ -31,10 +30,11 @@ describe('AIWorkspacePage', () => {
     expect(window.location.pathname + window.location.search).toBe('/workday?view=leaderboard');
   });
 
-  it('honours the initial view used by a legacy route', async () => {
-    render(<AIWorkspacePage initialView="monitor" />);
+  it('redirects the retired monitor URL to work records', async () => {
+    window.history.pushState({}, '', '/workday?view=monitor');
+    render(<AIWorkspacePage initialView="records" />);
 
-    expect(await screen.findByText('monitor panel')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: '设备与同步' })).toHaveAttribute('aria-selected', 'true');
+    expect(await screen.findByText('records panel')).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: '设备与同步' })).not.toBeInTheDocument();
   });
 });

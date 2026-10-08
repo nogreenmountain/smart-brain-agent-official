@@ -44,7 +44,7 @@ const NAV: {
     href: '/workday',
     label: 'AI 工作台',
     icon: Bot,
-    activePaths: ['/workday', '/leaderboard', '/worklogs', '/monitor/setup'],
+    activePaths: ['/workday', '/leaderboard', '/worklogs'],
   },
   { href: '/profile', label: '个人中心', icon: UserRound },
   { href: '/members', label: '成员信息', icon: Users, nonAdminOnly: true },
@@ -134,7 +134,7 @@ export function Shell({ me, children }: { me: Me; children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main className="min-w-0 flex-1 overflow-hidden bg-[var(--bg)]">{children}</main>
+      <main className="min-h-0 min-w-0 flex-1 overflow-hidden bg-[var(--bg)]">{children}</main>
     </div>
   );
 }

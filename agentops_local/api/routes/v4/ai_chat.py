@@ -33,6 +33,8 @@ AIChatSource = Literal[
     "chatgpt_desktop",
     "openai_compliance",
     "smartbrain",
+    "ai_gateway",
+    "personal_api",
 ]
 AIChatStatus = Literal["ok", "error", "partial"]
 AIChatRole = Literal["user", "assistant", "system", "tool"]
@@ -215,6 +217,7 @@ def _store_chat_session(
     employee_id: str,
     employee_name: str,
     body: AIChatIngestRequest,
+    commit: bool = True,
 ) -> uuid.UUID:
     now = datetime.now(timezone.utc)
     started_at = body.started_at or now
@@ -318,7 +321,8 @@ def _store_chat_session(
                 "metadata": _json_dumps(message.metadata),
             },
         )
-    orm.commit()
+    if commit:
+        orm.commit()
     return session_id
 
 

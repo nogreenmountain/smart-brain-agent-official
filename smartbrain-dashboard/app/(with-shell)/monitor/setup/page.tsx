@@ -1,5 +1,5 @@
-import { AIWorkspacePage } from '@/components/ai-workspace/AIWorkspacePage';
+import { redirect } from 'next/navigation';
 
 export default function MonitorSetupPage() {
-  return <AIWorkspacePage initialView="monitor" />;
+  redirect('/workday?view=records');
 }

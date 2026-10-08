@@ -40,6 +40,8 @@ const SOURCE_LABELS: Record<string, string> = {
   chatgpt_desktop: 'ChatGPT 桌面端',
   openai_compliance: 'OpenAI 合规接口',
   smartbrain: '智慧大脑',
+  ai_gateway: 'AI 网关',
+  personal_api: '个人 API',
 };
 
 const selectClass =
@@ -280,7 +282,7 @@ export default function WorkdayPage({ embedded = false }: { embedded?: boolean }
   }
 
   return (
-    <PageShell className={embedded ? 'h-full' : ''}>
+    <PageShell className={embedded ? 'h-full min-h-0' : ''}>
       {!embedded && <PageHeader
         eyebrow={adminMode ? 'TEAM AI ACTIVITY' : statisticsMode ? 'AI TOKEN STATISTICS' : 'PERSONAL AI ACTIVITY'}
         icon={CalendarDays}
@@ -303,7 +305,7 @@ export default function WorkdayPage({ embedded = false }: { embedded?: boolean }
         }
       />}
 
-      <main className="flex-1 overflow-y-auto">
+      <main className="min-h-0 flex-1 overflow-y-auto">
         <form onSubmit={submitQuery} className="border-b border-[#d7e0ec] bg-white px-4 py-4 md:px-6">
           <div className="mx-auto max-w-[1320px]">
           {selectableEmployeeMode && (
@@ -455,9 +457,12 @@ function HourlyUsage({ result }: { result: AIUsageQueryResult }) {
 
 function UsageRecordRow({ record, expanded, onToggle }: { record: AIUsageRecord; expanded: boolean; onToggle: () => void }) {
   const duration = formatDuration(record.duration_ms);
-  return <article className="min-w-0"><button type="button" onClick={onToggle} className="flex w-full items-start gap-3 px-3 py-3 text-left hover:bg-[#f8fafc] md:px-4" aria-expanded={expanded} aria-label={record.title}>{expanded ? <ChevronDown className="mt-1 shrink-0 text-[#6c7b91]" size={17} /> : <ChevronRight className="mt-1 shrink-0 text-[#6c7b91]" size={17} />}<span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${record.record_type === 'chat' ? 'bg-[#eaf2ff] text-[#2463a9]' : 'bg-[#eef1f5] text-[#607086]'}`}>{record.record_type === 'chat' ? <MessageSquareText size={16} /> : <Bot size={16} />}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-[#172844]">{record.title}</span><span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#6c7b91]"><span>{formatDateTime(record.started_at)}</span><span>{sourceLabel(record.source)}</span>{record.model && <span>{record.model}</span>}{duration && <span>{duration}</span>}</span></span><span className="shrink-0 text-right"><span className="block text-sm font-semibold text-[#253655]">{formatCount(record.total_tokens)}</span><span className="text-[10px] text-[#8491a4]">Tokens</span></span></button>{expanded && <div className="border-t border-[#edf1f6] bg-[#f8fafc] px-4 py-4 md:pl-[76px] md:pr-5"><div className="flex flex-wrap gap-2 text-[11px]"><Badge icon={<Hash size={12} />} text={record.task_title ?? record.task_id} /><Badge icon={<Bot size={12} />} text={record.model ?? '模型未上报'} />{record.error_count > 0 && <Badge icon={<TriangleAlert size={12} />} text={`${record.error_count} 个错误`} danger />}{record.trace_id && <a href={replayHref(record.trace_id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md border border-[#cbd8e8] bg-white px-2 py-1 font-medium text-[#2463a9] hover:border-[#8eb4dd]"><ExternalLink size={12} />打开 Trace</a>}</div>{record.messages && record.messages.length > 0 ? <div className="mt-4 space-y-3">{record.messages.map((message, index) => <div key={`${record.id}-${index}`} className={`max-w-4xl rounded-lg border px-3 py-2.5 text-sm leading-6 ${message.role === 'user' ? 'border-[#cfe0f4] bg-white text-[#1d3554]' : 'border-[#dbe7df] bg-[#f3faf6] text-[#234536]'}`}><p className="mb-1 text-[10px] font-semibold uppercase text-[#78869a]">{message.role === 'user' ? '用户' : message.role === 'assistant' ? 'AI' : message.role}</p><p className="whitespace-pre-wrap break-words">{message.content}</p></div>)}</div> : <p className="mt-4 text-xs text-[#6c7b91]">该记录暂未同步到可展开的对话正文。</p>}</div>}</article>;
+  const projectBadge = record.project_id !== '00000000-0000-0000-0000-000000000000' && record.project_name && record.project_name !== 'AI Monitor'
+    ? `项目归属：${record.project_name}`
+    : '未归属项目';
+  return <article className="min-w-0"><button type="button" onClick={onToggle} className="flex w-full items-start gap-3 px-3 py-3 text-left hover:bg-[#f8fafc] md:px-4" aria-expanded={expanded} aria-label={record.title}>{expanded ? <ChevronDown className="mt-1 shrink-0 text-[#6c7b91]" size={17} /> : <ChevronRight className="mt-1 shrink-0 text-[#6c7b91]" size={17} />}<span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md ${record.record_type === 'chat' ? 'bg-[#eaf2ff] text-[#2463a9]' : 'bg-[#eef1f5] text-[#607086]'}`}>{record.record_type === 'chat' ? <MessageSquareText size={16} /> : <Bot size={16} />}</span><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium text-[#172844]">{record.title}</span><span className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[#6c7b91]"><span>{formatDateTime(record.started_at)}</span><span>{sourceLabel(record.source)}</span><span className="rounded-full bg-brand-500/10 px-2 py-0.5 font-medium text-brand-700">{projectBadge}</span>{record.model && <span>{record.model}</span>}{duration && <span>{duration}</span>}</span></span><span className="shrink-0 text-right"><span className="block text-sm font-semibold text-[#253655]">{formatCount(record.total_tokens)}</span><span className="text-[10px] text-[#8491a4]">Tokens</span></span></button>{expanded && <div className="border-t border-[#edf1f6] bg-[#f8fafc] px-4 py-4 md:pl-[76px] md:pr-5"><div className="flex flex-wrap gap-2 text-[11px]"><Badge icon={<Hash size={12} />} text={record.task_title ?? record.task_id} /><Badge icon={<Bot size={12} />} text={record.model ?? '模型未上报'} /><Badge text={projectBadge} />{record.error_count > 0 && <Badge icon={<TriangleAlert size={12} />} text={`${record.error_count} 个错误`} danger />}{record.trace_id && <a href={replayHref(record.trace_id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-md border border-[#cbd8e8] bg-white px-2 py-1 font-medium text-[#2463a9] hover:border-[#8eb4dd]"><ExternalLink size={12} />打开 Trace</a>}</div>{record.messages && record.messages.length > 0 ? <div className="mt-4 space-y-3">{record.messages.map((message, index) => <div key={`${record.id}-${index}`} className={`max-w-4xl rounded-lg border px-3 py-2.5 text-sm leading-6 ${message.role === 'user' ? 'border-[#cfe0f4] bg-white text-[#1d3554]' : 'border-[#dbe7df] bg-[#f3faf6] text-[#234536]'}`}><p className="mb-1 text-[10px] font-semibold uppercase text-[#78869a]">{message.role === 'user' ? '用户' : message.role === 'assistant' ? 'AI' : message.role}</p><p className="whitespace-pre-wrap break-words">{message.content}</p></div>)}</div> : <p className="mt-4 text-xs text-[#6c7d91]">该记录暂未同步到可展开的对话正文。</p>}</div>}</article>;
 }
 
-function Badge({ icon, text, danger = false }: { icon: ReactNode; text: string; danger?: boolean }) {
+function Badge({ icon, text, danger = false }: { icon?: ReactNode; text: string; danger?: boolean }) {
   return <span className={`inline-flex max-w-full items-center gap-1 rounded-md border px-2 py-1 ${danger ? 'border-red-200 bg-red-50 text-red-700' : 'border-[#d7e0ec] bg-white text-[#53647d]'}`}>{icon}<span className="truncate">{text}</span></span>;
 }

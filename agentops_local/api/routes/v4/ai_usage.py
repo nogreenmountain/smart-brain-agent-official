@@ -38,11 +38,44 @@ from agentops.rag.authz import AuthzError, current_user_id, is_system_admin, req
 from agentops.workday.domain import business_day_utc_bounds
 from agentops.workday.identity import derive_employee_identity
 from agentops.api.routes.v4.ai_chat import _device_claims
+from agentops.ai_usage import gateway_content
 
 
 router = APIRouter(route_class=AuthenticatedRoute)
 device_router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+@router.get('/ai-usage/gateway-requests/{request_id}/content')
+def get_gateway_request_content(request: Request, request_id: uuid.UUID,
+        offset: int = Query(0, ge=0, le=2147483647),
+        snapshot_sha256: str | None = Query(None, pattern=r'^[a-f0-9]{64}$'),
+        orm: Session = Depends(get_orm_session)):
+    """Read an immutable Gateway content fragment under the current ACL."""
+    try:
+        caller = current_user_id(request)
+    except AuthzError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+    row = orm.execute(text(f"""
+        SELECT a.event_sha256 AS snapshot_sha256,
+            char_length({gateway_content.MESSAGE_TEXT_SQL}) AS total_characters,
+            substring({gateway_content.MESSAGE_TEXT_SQL} FROM :start FOR :length) AS fragment
+        FROM public.ai_gateway_admissions a
+        JOIN public.ai_gateway_events e ON e.event_id=a.id::text
+          AND e.user_id=a.user_id AND e.gateway_instance_id=a.gateway_instance_id
+        WHERE a.id=CAST(:request_id AS uuid) AND {gateway_content.READABLE_SQL}
+    """), {'caller': str(caller), 'request_id': str(request_id),
+            'start': offset + 1, 'length': gateway_content.CONTENT_FRAGMENT_CHARACTERS}).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail='Gateway request not available')
+    if snapshot_sha256 is not None and snapshot_sha256 != row.snapshot_sha256:
+        raise HTTPException(status_code=409, detail='Gateway snapshot changed')
+    if offset >= row.total_characters:
+        raise HTTPException(status_code=416, detail='Gateway content offset outside snapshot')
+    next_offset = offset + len(row.fragment)
+    return {'request_id': str(request_id), 'offset': offset, 'fragment': row.fragment,
+            'next_offset': next_offset if next_offset < row.total_characters else None,
+            'total_characters': row.total_characters, 'snapshot_sha256': row.snapshot_sha256}
 
 AIUsageSource = Literal[
     "cc_switch",
@@ -50,6 +83,8 @@ AIUsageSource = Literal[
     "chatgpt_desktop",
     "openai_compliance",
     "smartbrain",
+    "ai_gateway",
+    "personal_api",
 ]
 AIUsageMode = Literal["self", "admin", "statistics"]
 
@@ -93,6 +128,22 @@ class UsageOptionsResponse(BaseModel):
     departments: list[UsageDepartmentOption]
     projects: list[UsageProjectOption]
     employees: list[UsageEmployeeOption]
+
+
+class PersonalUsageProjectStat(BaseModel):
+    project_id: uuid.UUID | None = None
+    project_name: str
+    conversation_count: int
+    wiki_upload_count: int
+
+
+class PersonalUsageStatsResponse(BaseModel):
+    usage_date: date
+    conversation_count: int
+    wiki_upload_count: int
+    pending_wiki_count: int
+    failed_wiki_count: int
+    projects: list[PersonalUsageProjectStat]
 
 
 class UsageMessageResponse(BaseModel):
@@ -1128,12 +1179,15 @@ def _attach_messages(
                    COALESCE(message_created_at, created_at) AS created_at
             FROM public.ai_chat_messages
             WHERE session_id IN ({placeholders})
+              AND lower(role) IN ('user', 'assistant')
             ORDER BY session_id, sequence_index
         """),
         params,
     ).all()
     messages: dict[str, list[UsageMessage]] = {}
     for row in rows:
+        if str(row.role or '').lower() not in {'user', 'assistant'}:
+            continue
         messages.setdefault(str(row.session_id), []).append(
             UsageMessage(
                 role=row.role,
@@ -3102,6 +3156,51 @@ def get_ai_usage_options(
     except AuthzError as error:
         raise HTTPException(status_code=error.status_code, detail=error.detail) from error
     return _usage_options(orm, user_id)
+
+
+@router.get('/ai-usage/personal-stats', response_model=PersonalUsageStatsResponse)
+def get_personal_usage_stats(
+    request: Request,
+    usage_date: date | None = Query(None, alias='date'),
+    orm: Session = Depends(get_orm_session),
+) -> PersonalUsageStatsResponse:
+    try:
+        user_id = current_user_id(request)
+    except AuthzError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+    target_date = usage_date or datetime.now(SHANGHAI_TIMEZONE).date()
+    start_local = datetime.combine(target_date, datetime.min.time(), tzinfo=SHANGHAI_TIMEZONE)
+    end_local = start_local + timedelta(days=1)
+    start_utc, end_utc = start_local.astimezone(timezone.utc), end_local.astimezone(timezone.utc)
+    summary = orm.execute(text("""
+        SELECT count(*)::int AS conversation_count
+        FROM public.ai_gateway_events
+        WHERE user_id=:uid AND COALESCE(completed_at, started_at) >= :start_utc
+          AND COALESCE(completed_at, started_at) < :end_utc
+    """), {'uid': str(user_id), 'start_utc': start_utc, 'end_utc': end_utc}).first()
+    rows = orm.execute(text("""
+        SELECT r.project_id::text AS project_id, p.name AS project_name,
+               count(*)::int AS conversation_count,
+               count(*) FILTER (WHERE r.wiki_status='published')::int AS wiki_upload_count,
+               count(*) FILTER (WHERE r.wiki_status='pending')::int AS pending_wiki_count,
+               count(*) FILTER (WHERE r.wiki_status='failed')::int AS failed_wiki_count
+        FROM public.project_conversation_records r
+        JOIN public.projects p ON p.id=r.project_id
+        WHERE r.user_id=:uid AND r.created_at >= :start_utc AND r.created_at < :end_utc
+        GROUP BY r.project_id, p.name ORDER BY p.name
+    """), {'uid': str(user_id), 'start_utc': start_utc, 'end_utc': end_utc}).all()
+    return PersonalUsageStatsResponse(
+        usage_date=target_date,
+        conversation_count=int(summary.conversation_count or 0),
+        wiki_upload_count=sum(int(row.wiki_upload_count or 0) for row in rows),
+        pending_wiki_count=sum(int(row.pending_wiki_count or 0) for row in rows),
+        failed_wiki_count=sum(int(row.failed_wiki_count or 0) for row in rows),
+        projects=[PersonalUsageProjectStat(
+            project_id=uuid.UUID(str(row.project_id)), project_name=str(row.project_name),
+            conversation_count=int(row.conversation_count or 0),
+            wiki_upload_count=int(row.wiki_upload_count or 0),
+        ) for row in rows],
+    )
 
 
 @router.get("/ai-usage/leaderboard", response_model=UsageLeaderboardResponse)

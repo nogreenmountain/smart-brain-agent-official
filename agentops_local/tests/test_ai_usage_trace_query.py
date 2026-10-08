@@ -47,6 +47,14 @@ class _MessageResult:
         return []
 
 
+class _VisibleMessageResult:
+    def all(self):
+        return [
+            SimpleNamespace(session_id="00000000-0000-0000-0000-000000000010", role="user", content="visible", token_count=None, created_at=None),
+            SimpleNamespace(session_id="00000000-0000-0000-0000-000000000010", role="system", content="hidden", token_count=None, created_at=None),
+        ]
+
+
 class _CapturingOrm:
     def __init__(self) -> None:
         self.sql = ""
@@ -56,6 +64,13 @@ class _CapturingOrm:
         self.sql = str(statement)
         self.parameters = parameters or {}
         return _MessageResult()
+
+
+class _VisibleMessageOrm(_CapturingOrm):
+    def execute(self, statement, parameters=None):
+        self.sql = str(statement)
+        self.parameters = parameters or {}
+        return _VisibleMessageResult()
 
 
 class AIUsageTraceQueryTests(unittest.TestCase):
@@ -226,7 +241,30 @@ class AIUsageTraceQueryTests(unittest.TestCase):
 
         self.assertEqual(orm.parameters, {"session_0": stored_chat.id})
         self.assertNotIn("shared:", " ".join(str(value) for value in orm.parameters.values()))
+        self.assertIn("lower(role) IN ('user', 'assistant')", orm.sql)
         self.assertEqual(records[1].messages, ())
+
+    def test_attach_messages_hides_legacy_internal_roles(self) -> None:
+        orm = _VisibleMessageOrm()
+        started_at = datetime(2026, 8, 17, 4, 0, tzinfo=timezone.utc)
+        record = route.UsageRecord(
+            id="00000000-0000-0000-0000-000000000010",
+            record_type="chat",
+            project_id="00000000-0000-0000-0000-000000000001",
+            project_name="Project",
+            employee_id="employee-001",
+            employee_name="Employee",
+            source="personal_api",
+            title="Conversation",
+            started_at=started_at,
+            task_id="unassigned",
+            status="ok",
+        )
+
+        result = route._attach_messages(orm, [record])
+
+        assert [message.role for message in result[0].messages] == ["user"]
+        assert [message.content for message in result[0].messages] == ["visible"]
 
 
 if __name__ == "__main__":

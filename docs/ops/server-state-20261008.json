@@ -1,0 +1,510 @@
+{
+  "observed_at": "2026-10-08T01:30:09.251069+00:00",
+  "timezone": "Asia/Shanghai",
+  "observation_type": "read-only, not deployment or recovery qualification",
+  "container_count": 902,
+  "running_count": 38,
+  "inventory_stable": true,
+  "docker_version": "29.7.2",
+  "memory_available_gib": 5.6,
+  "disk": [
+    {
+      "mount": "/srv/smartbrain-hot",
+      "free_gib": 20.27
+    },
+    {
+      "mount": "/srv/smartbrain-cold",
+      "free_gib": 253.15
+    },
+    {
+      "mount": "/srv/smartbrain-backups",
+      "free_gib": 585.92
+    },
+    {
+      "mount": "/var/lib/docker",
+      "free_gib": 32.31
+    }
+  ],
+  "components": [
+    {
+      "name": "smartbrain-agentops-dashboard-1",
+      "id": "0c82e9dc44944de8aed35587b95ff7aea7ceb026431fc6150844002a16970d72",
+      "image_ref": "smartbrain/agentops-dashboard:2026.09.24-project-context-r9",
+      "image_id": "sha256:42f118022c9f85b486ca55ccff10c57cb8621e1dd574d64384f0f7d6dda350dd",
+      "state": "running",
+      "health": null,
+      "started_at": "2026-09-24T08:41:08.142625983Z",
+      "restart_count": 0,
+      "restart_policy": "unless-stopped"
+    },
+    {
+      "name": "smartbrain-wiki-mcp-1",
+      "id": "42917bba6e06a1cce5b2584bd32bd86c4d82cc1ec563732c9a6f6077a7bbe1a7",
+      "image_ref": "smartbrain/wiki-mcp@sha256:f082527c40bb30d645072afeafcf8c76bf61b6589cdf6ca46017d14c09f0a1b4",
+      "image_id": "sha256:f082527c40bb30d645072afeafcf8c76bf61b6589cdf6ca46017d14c09f0a1b4",
+      "state": "running",
+      "health": "healthy",
+      "started_at": "2026-09-22T06:40:53.045425808Z",
+      "restart_count": 11,
+      "restart_policy": "unless-stopped"
+    },
+    {
+      "name": "smartbrain-workday-records-unified-20260921-profile-url",
+      "id": "51013e6ca9e29cc4dba29227e5c6d8286a69c24095ff7becb95c576997f03bc1",
+      "image_ref": "smartbrain/agentops-dashboard:2026.09.22-workday-records-r1",
+      "image_id": "sha256:3d18efac5582502e39f36859fd026371f4d5fe46c840ff313daef946e646940c",
+      "state": "running",
+      "health": null,
+      "started_at": "2026-09-22T14:09:14.733280594Z",
+      "restart_count": 0,
+      "restart_policy": "no"
+    },
+    {
+      "name": "smartbrain-smartbrain-reverse-tunnel-1",
+      "id": "725b1cbeea2eb907b5311911fedb76331b7f993efe2bbb6bb3ba878dcaecbf15",
+      "image_ref": "smartbrain/reverse-tunnel:ubuntu-2026.08.28.2",
+      "image_id": "sha256:5a6b3b986c5927bab14c41d08d9edc901a9163ef401e252ec32570e43bd1e7d3",
+      "state": "running",
+      "health": "healthy",
+      "started_at": "2026-10-07T23:19:40.145198607Z",
+      "restart_count": 11,
+      "restart_policy": "unless-stopped"
+    },
+    {
+      "name": "smartbrain-personal-key-api-20260923-filter-internal-r1",
+      "id": "7f3b8975f6e0a7d0abdbd7334bb7e212214235d0f4ab0f85f9c5a96754941515",
+      "image_ref": "smartbrain/personal-key-api:2026.09.24-request-id-r1",
+      "image_id": "sha256:f0c773cc0c468daf95766ac2bffd015c423c7e019bb36515abdecb0d8e5da2ea",
+      "state": "running",
+      "health": null,
+      "started_at": "2026-09-24T01:13:33.213970122Z",
+      "restart_count": 0,
+      "restart_policy": "no"
+    },
+    {
+      "name": "smartbrain-api-20260923-filter-internal-r1",
+      "id": "84391fffc7e6d5c49b4cd3fcade164d38a7c28483c71ab0dc3ec820f727064a0",
+      "image_ref": "smartbrain/api:2026.09.24-project-context-r1",
+      "image_id": "sha256:951223a09eef54a7a9e8d861bb1e489d45b46a812e872f2b68254d5c19a913dc",
+      "state": "running",
+      "health": null,
+      "started_at": "2026-09-24T06:30:46.649997131Z",
+      "restart_count": 0,
+      "restart_policy": "unless-stopped"
+    },
+    {
+      "name": "smartbrain-postgres-1",
+      "id": "c02f5e11a23c64615c4068e8e84e9917b436ce8e37a1729b9f4c71568c570d95",
+      "image_ref": "public.ecr.aws/supabase/postgres:15.8.1.085",
+      "image_id": "sha256:af083ef64d0408c8f098ee6f5c364a59b26f36fbc0f3a334a62c5c1d57362e9b",
+      "state": "running",
+      "health": "healthy",
+      "started_at": "2026-09-07T14:10:53.486486397Z",
+      "restart_count": 0,
+      "restart_policy": "unless-stopped"
+    },
+    {
+      "name": "smartbrain-workday-gateway-body-20260923-filter-internal-r1",
+      "id": "d530e777d9b355aad899eb532cb1f32275840d05a481f8609fcdcca1eb92dc95",
+      "image_ref": "smartbrain/workday-gateway-read:2026.09.23-filter-internal-r1",
+      "image_id": "sha256:ff715afd9da1a20ae3ff03094c9d967356b5796245070ff36af75a76b65a490d",
+      "state": "running",
+      "health": null,
+      "started_at": "2026-09-23T03:16:56.469939056Z",
+      "restart_count": 0,
+      "restart_policy": "no"
+    },
+    {
+      "name": "smartbrain-llm-pilot-gateway-1",
+      "id": "d769c786eabf88dfeda3506009a705a684b794c09cc4cbdcd1e6635307099779",
+      "image_ref": "ghcr.io/berriai/litellm:v1.100.1@sha256:a3715fa7ad8387941ab697259bd2881d68931657247a41984f90fae6d11c62bf",
+      "image_id": "sha256:a3715fa7ad8387941ab697259bd2881d68931657247a41984f90fae6d11c62bf",
+      "state": "running",
+      "health": "healthy",
+      "started_at": "2026-09-20T05:37:16.487907955Z",
+      "restart_count": 0,
+      "restart_policy": "no"
+    },
+    {
+      "name": "smartbrain-llm-pilot-gateway-db-1",
+      "id": "e39f937447a430da6985ce179731b19c152d101df4c1ae8d0232f9095e0f9cf1",
+      "image_ref": "postgres:16.10-alpine@sha256:029660641a0cfc575b14f336ba448fb8a75fd595d42e1fa316b9fb4378742297",
+      "image_id": "sha256:029660641a0cfc575b14f336ba448fb8a75fd595d42e1fa316b9fb4378742297",
+      "state": "running",
+      "health": "healthy",
+      "started_at": "2026-09-15T04:46:51.192944647Z",
+      "restart_count": 0,
+      "restart_policy": "no"
+    },
+    {
+      "name": "smartbrain-redis-1",
+      "id": "e6742e8e6ea22ab777fdce8b9f4609929cf43b4aaca53e0718f7a50f18403f69",
+      "image_ref": "redis:7.4.2-alpine",
+      "image_id": "sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952",
+      "state": "running",
+      "health": "healthy",
+      "started_at": "2026-09-07T14:12:20.422255253Z",
+      "restart_count": 0,
+      "restart_policy": "unless-stopped"
+    },
+    {
+      "name": "smartbrain-edge-1",
+      "id": "f72614f0f738bd35815aeb2455dc97df99d06d1dc480e17db70ceeeb66d42e73",
+      "image_ref": "nginx:1.27.5-alpine",
+      "image_id": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+      "state": "running",
+      "health": "healthy",
+      "started_at": "2026-09-20T14:46:30.789858963Z",
+      "restart_count": 0,
+      "restart_policy": "unless-stopped"
+    }
+  ],
+  "units": [
+    {
+      "Id": "smartbrain-backup.service",
+      "LoadState": "loaded",
+      "ActiveState": "failed",
+      "SubState": "failed",
+      "FragmentPath": "/etc/systemd/system/smartbrain-backup.service",
+      "UnitFileState": "static",
+      "Job": "",
+      "InvocationID": "3567a4b6b23946028c901ab369290341",
+      "MainPID": "0",
+      "ControlPID": "0",
+      "Result": "exit-code",
+      "NRestarts": "0",
+      "ExecMainStatus": "1"
+    },
+    {
+      "Id": "smartbrain-backup.timer",
+      "LoadState": "loaded",
+      "ActiveState": "active",
+      "SubState": "waiting",
+      "FragmentPath": "/etc/systemd/system/smartbrain-backup.timer",
+      "UnitFileState": "enabled",
+      "Job": "",
+      "InvocationID": "4f25f0054ade407aab36e7e50e5751c9",
+      "Result": "success"
+    },
+    {
+      "Id": "smartbrain-workday-records-frontend.service",
+      "LoadState": "loaded",
+      "ActiveState": "active",
+      "SubState": "running",
+      "FragmentPath": "/etc/systemd/system/smartbrain-workday-records-frontend.service",
+      "UnitFileState": "enabled",
+      "Job": "",
+      "InvocationID": "70971d8d9b654a148e1a8f2289536805",
+      "MainPID": "1539612",
+      "ControlPID": "0",
+      "Result": "success",
+      "NRestarts": "0",
+      "ExecMainStatus": "0"
+    },
+    {
+      "Id": "smartbrain-workday-gateway-read.service",
+      "LoadState": "loaded",
+      "ActiveState": "active",
+      "SubState": "running",
+      "FragmentPath": "/etc/systemd/system/smartbrain-workday-gateway-read.service",
+      "UnitFileState": "enabled",
+      "Job": "",
+      "InvocationID": "aeb3724383154f13af675705cbff8dee",
+      "MainPID": "3693010",
+      "ControlPID": "0",
+      "Result": "success",
+      "NRestarts": "0",
+      "ExecMainStatus": "0"
+    },
+    {
+      "Id": "smartbrain-personal-registered-api.service",
+      "LoadState": "loaded",
+      "ActiveState": "inactive",
+      "SubState": "dead",
+      "FragmentPath": "/etc/systemd/system/smartbrain-personal-registered-api.service",
+      "UnitFileState": "enabled",
+      "Job": "",
+      "InvocationID": "03ab6bf826c14dafa95ed71955e8d4bc",
+      "MainPID": "0",
+      "ControlPID": "0",
+      "Result": "success",
+      "NRestarts": "0",
+      "ExecMainStatus": "0"
+    },
+    {
+      "Id": "smartbrain-tunnel.service",
+      "LoadState": "loaded",
+      "ActiveState": "failed",
+      "SubState": "failed",
+      "FragmentPath": "/etc/systemd/system/smartbrain-tunnel.service",
+      "UnitFileState": "enabled",
+      "Job": "",
+      "InvocationID": "bf1c089d55fd4bdea03fa32715311338",
+      "MainPID": "0",
+      "ControlPID": "0",
+      "Result": "exit-code",
+      "NRestarts": "0",
+      "ExecMainStatus": "0"
+    }
+  ],
+  "route_bindings": [
+    {
+      "container": "smartbrain-agentops-dashboard-1",
+      "network": "smartbrain_app",
+      "ip": "172.18.0.16",
+      "aliases": [
+        "agentops-dashboard",
+        "smartbrain"
+      ]
+    },
+    {
+      "container": "smartbrain-api-20260923-filter-internal-r1",
+      "network": "smartbrain_app",
+      "ip": "172.18.0.10",
+      "aliases": [
+        "api",
+        "smartbrain-api-1"
+      ]
+    },
+    {
+      "container": "smartbrain-personal-key-api-20260923-filter-internal-r1",
+      "network": "smartbrain_app",
+      "ip": "172.18.0.17",
+      "aliases": [
+        "personal-key-api-r1",
+        "personal-key-api-candidate-r1"
+      ]
+    },
+    {
+      "container": "smartbrain-workday-gateway-body-20260923-filter-internal-r1",
+      "network": "smartbrain_app",
+      "ip": "172.18.0.33",
+      "aliases": [
+        "workday-gateway-read"
+      ]
+    },
+    {
+      "container": "smartbrain-workday-records-unified-20260921-profile-url",
+      "network": "smartbrain_app",
+      "ip": "172.18.0.27",
+      "aliases": [
+        "workday-records-unified"
+      ]
+    },
+    {
+      "container": "smartbrain-workday-records-unified-20260921-profile-url",
+      "network": "smartbrain_frontend",
+      "ip": "172.28.0.6",
+      "aliases": [
+        "workday-records-unified"
+      ]
+    }
+  ],
+  "edge_config": [
+    {
+      "host_path": "/srv/smartbrain/releases/ubuntu-2026.08.29-next-major-r2/deploy/ubuntu/nginx/edge.conf",
+      "active_path": "/etc/nginx/conf.d/default.conf",
+      "host": {
+        "sha256": "c503418978f5b1aaf210be22bae0d681c775a824a79e8cb5a9be0cc2136af75e",
+        "inode": 5397409
+      },
+      "active": {
+        "sha256": "c503418978f5b1aaf210be22bae0d681c775a824a79e8cb5a9be0cc2136af75e",
+        "inode": 5397404
+      },
+      "equal": true
+    }
+  ],
+  "http": [
+    {
+      "path": "/login",
+      "status": "200",
+      "exit_code": 0
+    },
+    {
+      "path": "/profile",
+      "status": "200",
+      "exit_code": 0
+    },
+    {
+      "path": "/workday",
+      "status": "200",
+      "exit_code": 0
+    },
+    {
+      "path": "/health/ready",
+      "status": "200",
+      "exit_code": 0
+    },
+    {
+      "path": "/v4/ai-gateway/keys",
+      "status": "401",
+      "exit_code": 0
+    },
+    {
+      "path": "/v4/ai-gateway/operations",
+      "status": "401",
+      "exit_code": 0
+    },
+    {
+      "path": "/v4/ai-usage/records",
+      "status": "401",
+      "exit_code": 0
+    },
+    {
+      "path": "/v4/personal-api/v1/models",
+      "status": "401",
+      "exit_code": 0
+    }
+  ],
+  "rollback_candidates": [
+    {
+      "name": "smartbrain-smartbrain-1-rollback-20260922-workday",
+      "image_ref": "smartbrain/smartbrain:workday-body-20260910-r1",
+      "image_id": "sha256:b10667f3f7703c5af17d7b0e4e51d8588fd1cc57ab7f2cf35927448f4d503738",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-agentops-dashboard-1-rollback-20260922-workday",
+      "image_ref": "smartbrain/agentops-dashboard:ubuntu-2026.09.14-keydelete-r5",
+      "image_id": "sha256:b900a7e261c41ac6af372aab0ca1d6595b827d1116c7d6bbe60ee1cd23bf6d2c",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-dashboard-project-feature-rollback-r1",
+      "image_ref": "smartbrain/agentops-dashboard:2026.09.22-workday-records-r1",
+      "image_id": "sha256:3d18efac5582502e39f36859fd026371f4d5fe46c840ff313daef946e646940c",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-agentops-dashboard-1-rollback-context-finalfix",
+      "image_ref": "smartbrain/agentops-dashboard:2026.09.24-project-context-r3",
+      "image_id": "sha256:7ad4afb18d579357023138daff6b3c95f2a03800c8c6ecf577fa6829e773e07a",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-agentops-dashboard-1-rollback-project-context-restore",
+      "image_ref": "smartbrain/agentops-dashboard:2026.09.23-project-feature-r2",
+      "image_id": "sha256:683be828d9f5d0131ad35fc40d83df7ceadd0cf7de3479b185e06991180a36b5",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-agentops-dashboard-1-rollback-context-legacyfix2",
+      "image_ref": "smartbrain/agentops-dashboard:2026.09.24-project-context-r6",
+      "image_id": "sha256:87d6ea3a5a06fa4b6c5b9fb6434e5c43673094b0b904fb9cecfcc4e18354f29c",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-api-20260923-filter-internal-r1-rollback-project-context",
+      "image_ref": "smartbrain/api:2026.09.23-project-feature-r2",
+      "image_id": "sha256:48bc467d6e84c9d41b1e886f361dd8349d7afbb9baabcd68f1c10513f37f31a4",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-personal-key-api-20260915-r1-rollback-20260921-proxy-r1",
+      "image_ref": "smartbrain/personal-key-api:2026.09.21-personal-proxy-r1",
+      "image_id": "sha256:69129ca4baa784aef20cb5a0e016cb0b010bf9e5a721115b6b6b246b81514409",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-workday-records-unified-20260921-profile-url-rollback-20260922",
+      "image_ref": "smartbrain/agentops-dashboard:profile-url-base-20260921-r1",
+      "image_id": "sha256:676fe0d6b68d6150c75f959a6d5515422338291e4feee961be0f518b51a6c942",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-personal-key-api-20260915-r1-rollback",
+      "image_ref": "sha256:90a1ce1a3b063a5da885558000d7045677a06716209b7959f98a639209f69653",
+      "image_id": "sha256:90a1ce1a3b063a5da885558000d7045677a06716209b7959f98a639209f69653",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-agentops-dashboard-1-rollback-context-final-final",
+      "image_ref": "smartbrain/agentops-dashboard:2026.09.24-project-context-r7",
+      "image_id": "sha256:94354e8f42aaef9b2be27b7a250fa05f200fa126981c3ae892f2ac8d821ede8b",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-agentops-dashboard-1-rollback-context-final-r9",
+      "image_ref": "smartbrain/agentops-dashboard:2026.09.24-project-context-r8",
+      "image_id": "sha256:a6ba4854554195ae890f9a650b0707343ad7c853b094426f14deab2c7f4527c4",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-agentops-dashboard-1-rollback-context-final",
+      "image_ref": "smartbrain/agentops-dashboard:2026.09.24-project-context-r4",
+      "image_id": "sha256:0645e4ead5823222356213a84fa5f5dba11d9288ec6242839b4fe35d4b860866",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-workday-gateway-body-20260910-r2-rollback-20260923-filter",
+      "image_ref": "smartbrain/workday-gateway-read:2026.09.21-personal-usage-r1",
+      "image_id": "sha256:b67fdd6e50c816e371395c9da5bda9eb91a8aaa7acafbf74e0cd1b559f36c8d7",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-agentops-dashboard-1-rollback-context-errorfix",
+      "image_ref": "smartbrain/agentops-dashboard:2026.09.24-project-context-r2",
+      "image_id": "sha256:417fdade9da0d95782272c6bccd3e9852b1de27c5520323b7d5e03d0dd0d5e1b",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-personal-key-api-20260915-r1-rollback-20260921",
+      "image_ref": "smartbrain/personal-key-api:2026.09.21-operations-r2",
+      "image_id": "sha256:69be81321d6af93d10fb7e380af9b1583c1b70c3091b4db1c2749e00e538aaad",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-workday-gateway-body-20260910-r2-rollback-20260921",
+      "image_ref": "sha256:d20888dfd896b4a4decb8ca907030941216755c1ded903a430f32a6c7b81531a",
+      "image_id": "sha256:d20888dfd896b4a4decb8ca907030941216755c1ded903a430f32a6c7b81531a",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-personal-key-api-20260923-filter-internal-r1-rollback-20260924",
+      "image_ref": "smartbrain/personal-key-api:2026.09.23-project-feature-r1",
+      "image_id": "sha256:e527bc6ac34e52c9d5a5947f5490b9f4d5b480a6be21eb3288910b4d2af449cb",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-agentops-dashboard-1-rollback-context-bomfix",
+      "image_ref": "smartbrain/agentops-dashboard:2026.09.24-project-context-r1",
+      "image_id": "sha256:b8327f1d23c4c3ce6744cfc32c2c691f45e5f7176791f2538d6de53cb8b3ec1c",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-personal-key-api-20260915-r1-rollback-20260923-filter",
+      "image_ref": "smartbrain/personal-key-api:2026.09.21-personal-proxy-r2",
+      "image_id": "sha256:e337b6cd02fd67d96698273fc1c6be902a485b2877932671aacf15fe096f0a03",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-personal-key-api-project-feature-rollback-r1",
+      "image_ref": "smartbrain/personal-key-api:2026.09.23-filter-internal-r1",
+      "image_id": "sha256:38a1cdcd390da6fb75239c74e07b962ac89e53ed1e5978538ade9e79f6bd37f4",
+      "state": "exited"
+    },
+    {
+      "name": "smartbrain-agentops-dashboard-1-rollback-context-legacyfix",
+      "image_ref": "smartbrain/agentops-dashboard:2026.09.24-project-context-r5",
+      "image_id": "sha256:d3b537481bd48bbe1b1d6b3cfcdc11ed4ce7c9dfd74b8ebbf2eb4aac1a045616",
+      "state": "exited"
+    }
+  ],
+  "production_mutations": 0,
+  "pending_intent_exists": false,
+  "management_feature_gate_exists": false,
+  "registered_selected_migrations": [
+    "20260923000000"
+  ],
+  "matching_table_names": [
+    "llm_credential_refs",
+    "llm_gateway_instances",
+    "llm_key_operations",
+    "llm_member_rollout",
+    "llms",
+    "project_conversation_records"
+  ],
+  "reconcile_service": "loaded/inactive; MainPID=0",
+  "reconcile_timer": "loaded/inactive/disabled"
+}

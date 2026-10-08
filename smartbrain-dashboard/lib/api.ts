@@ -12,6 +12,10 @@ function getApiBase(): string {
   return 'http://localhost:8000';
 }
 
+export function getApiBaseUrl(): string {
+  return getApiBase();
+}
+
 export interface OrgMembership {
   org_id: string;
   org_name: string;
@@ -39,6 +43,60 @@ export interface Project {
   role?: ProjectRole;
   created_at?: string | null;
   completed_at?: string | null;
+}
+
+export interface ProjectAgentsFile {
+  project_id: string;
+  filename: 'AGENTS.md';
+  content: string;
+  version: number;
+  sha256: string;
+  updated_by?: string | null;
+  updated_at?: string | null;
+}
+
+export interface ProjectContext {
+  project_id: string;
+  agents_version: number;
+  agents_sha256: string;
+  token: string;
+  expires_at: string;
+  refresh_after?: string;
+}
+
+export interface LocalProjectAdapterStatus {
+  ok: boolean;
+  project_id: string;
+  listen_port: number;
+}
+
+export interface WikiUploadStatsMember {
+  user_id: string;
+  display_name: string;
+  count: number;
+  ratio: number;
+}
+
+export interface WikiUploadStats {
+  project_id: string;
+  total: number;
+  members: WikiUploadStatsMember[];
+}
+
+export interface PersonalUsageProjectStat {
+  project_id: string | null;
+  project_name: string;
+  conversation_count: number;
+  wiki_upload_count: number;
+}
+
+export interface PersonalUsageStats {
+  usage_date: string;
+  conversation_count: number;
+  wiki_upload_count: number;
+  pending_wiki_count: number;
+  failed_wiki_count: number;
+  projects: PersonalUsageProjectStat[];
 }
 
 export type ProjectCreationRequestStatus = 'pending' | 'approved' | 'rejected';
@@ -427,7 +485,9 @@ export type AIUsageSource =
   | 'chatgpt_web'
   | 'chatgpt_desktop'
   | 'openai_compliance'
-  | 'smartbrain';
+  | 'smartbrain'
+  | 'ai_gateway'
+  | 'personal_api';
 
 export interface AIUsageDepartmentOption {
   id: DepartmentId;
@@ -857,7 +917,7 @@ export type MeetingParticipantOption = ProjectMemberOption;
 
 export type DepartmentId = string;
 
-export type KnowledgeLedgerCategory = 'project_material' | 'project_wiki_source' | 'meeting_record';
+export type KnowledgeLedgerCategory = 'project_material' | 'project_wiki_source' | 'meeting_record' | 'conversation_record';
 
 export interface Department {
   id: DepartmentId;
@@ -1289,6 +1349,56 @@ export async function listProjects(): Promise<Project[]> {
   return call<Project[]>('/v4/projects');
 }
 
+export async function getProjectAgents(projectId: string): Promise<ProjectAgentsFile> {
+  return call<ProjectAgentsFile>(`/v4/projects/${encodeURIComponent(projectId)}/agents`, { cache: 'no-store' });
+}
+
+export async function initializeProjectAgents(projectId: string): Promise<ProjectAgentsFile> {
+  return call<ProjectAgentsFile>(`/v4/projects/${encodeURIComponent(projectId)}/agents/initialize`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+}
+
+export async function uploadProjectAgents(projectId: string, file: File): Promise<ProjectAgentsFile> {
+  return call<ProjectAgentsFile>(`/v4/projects/${encodeURIComponent(projectId)}/agents/upload`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/markdown; charset=utf-8', 'X-File-Name': file.name },
+    body: await file.arrayBuffer(),
+  });
+}
+
+export async function downloadProjectAgents(projectId: string): Promise<Blob> {
+  const res = await fetch(`${getApiBase()}/v4/projects/${encodeURIComponent(projectId)}/agents/download`, {
+    credentials: 'include',
+  });
+  if (!res.ok) throw new ApiError(res.status, null, `下载失败 (${res.status})`);
+  return res.blob();
+}
+
+export async function createProjectContext(projectId: string, keyId?: string): Promise<ProjectContext> {
+  const qs = keyId ? `?key_id=${encodeURIComponent(keyId)}` : '';
+  return call<ProjectContext>(`/v4/projects/${encodeURIComponent(projectId)}/context${qs}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+}
+
+export async function getLocalProjectAdapterStatus(port: number): Promise<LocalProjectAdapterStatus> {
+  const response = await fetch(`http://127.0.0.1:${port}/control/status`, {
+    cache: 'no-store',
+    mode: 'cors',
+  });
+  if (!response.ok) throw new ApiError(response.status, null, `本机适配器不可用 (${response.status})`);
+  return response.json() as Promise<LocalProjectAdapterStatus>;
+}
+
+export async function getProjectWikiUploadStats(projectId: string): Promise<WikiUploadStats> {
+  return call<WikiUploadStats>(`/v4/projects/${encodeURIComponent(projectId)}/wiki-upload-stats`, { cache: 'no-store' });
+}
+
 export async function listProjectCatalog(): Promise<Project[]> {
   return call<Project[]>('/v4/projects/catalog');
 }
@@ -1703,6 +1813,10 @@ export async function getWorkdaySummary(
 
 export async function getAIUsageOptions(): Promise<AIUsageOptions> {
   return call<AIUsageOptions>('/v4/ai-usage/options');
+}
+
+export async function getPersonalUsageStats(): Promise<PersonalUsageStats> {
+  return call<PersonalUsageStats>('/v4/ai-usage/personal-stats', { cache: 'no-store' });
 }
 
 export type KnowledgeAssetType = 'project_material' | 'project_wiki' | 'meeting_record';
@@ -2139,6 +2253,31 @@ export interface AIGatewayKey {
   status?: 'active' | 'revoking' | 'revoked' | 'removing' | 'removed' | 'needs_attention';
 }
 
+export interface AIGatewayKeyRequest {
+  id: string;
+  user_id: string;
+  requested_total: number;
+  reason: string;
+  status: 'pending' | 'approved' | 'rejected' | 'cancelled';
+  reviewed_by?: string | null;
+  review_comment?: string | null;
+  created_at: string;
+  reviewed_at?: string | null;
+}
+
+export interface AIGatewayKeyUsage {
+  key_id: string;
+  request_count: number;
+  success_count: number;
+  failure_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  token_status: Record<string, number>;
+  models: Array<{ model: string; count: number; total_tokens: number }>;
+  last_used_at?: string | null;
+}
+
 export interface AIGatewayOperation {
   kind?: 'operation';
   operation_id: string;
@@ -2162,6 +2301,34 @@ export function listAIGatewayOperations(): Promise<AIGatewayOperation[]> {
 
 export function listAIGatewayKeys(): Promise<AIGatewayKey[]> {
   return call<AIGatewayKey[]>('/v4/ai-gateway/keys');
+}
+
+export function getAIGatewayKeyUsage(id: string): Promise<AIGatewayKeyUsage> {
+  return call<AIGatewayKeyUsage>(`/v4/ai-gateway/keys/${encodeURIComponent(id)}/usage`, { cache: 'no-store' });
+}
+
+export function listMyKeyRequests(): Promise<AIGatewayKeyRequest[]> {
+  return call<AIGatewayKeyRequest[]>('/v4/ai-gateway/key-requests', { cache: 'no-store' });
+}
+
+export function submitKeyRequest(requestedTotal: number, reason: string): Promise<AIGatewayKeyRequest> {
+  return call<AIGatewayKeyRequest>('/v4/ai-gateway/key-requests', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requested_total: requestedTotal, reason }),
+  });
+}
+
+export function listKeyRequestReview(): Promise<AIGatewayKeyRequest[]> {
+  return call<AIGatewayKeyRequest[]>('/v4/ai-gateway/key-requests/review', { cache: 'no-store' });
+}
+
+export function reviewKeyRequest(id: string, decision: 'approve' | 'reject', comment = ''): Promise<AIGatewayKeyRequest> {
+  return call<AIGatewayKeyRequest>(`/v4/ai-gateway/key-requests/${encodeURIComponent(id)}/review`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision, comment }),
+  });
 }
 
 export function createAIGatewayKey(

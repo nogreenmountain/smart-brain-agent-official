@@ -102,3 +102,10 @@ evidence.private.*
 .deploy-state/
 .runtime/
 
+
+# Public continuation rules; private source history is not copied
+!AGENTS.md
+
+# Generated TypeScript build state and scratch patch
+*.tsbuildinfo
+patch.tmp

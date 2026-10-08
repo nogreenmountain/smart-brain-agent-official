@@ -1,0 +1,16 @@
+[Unit]
+Description=SmartBrain personal Key api 20260915
+Requires=docker.service
+After=docker.service
+ConditionPathExists=!/etc/smartbrain-maintenance.pending
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/docker start --attach b99f0ccbc0ba074d1b92403c5c48d9e9f4c56671a129c424f1f587f0277db950
+ExecStop=/usr/bin/docker stop --time 30 b99f0ccbc0ba074d1b92403c5c48d9e9f4c56671a129c424f1f587f0277db950
+Restart=no
+TimeoutStopSec=45
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target

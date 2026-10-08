@@ -220,6 +220,37 @@ describe('AdminPage', () => {
     });
   });
 
+  it('restores the read-only 我的项目 section without replacing the full project catalogue', async () => {
+    mocks.listProjects.mockResolvedValue([
+      {
+        id: 'my-project-1',
+        org_id: 'org-1',
+        name: '我参与的项目',
+        environment: 'development',
+        department_id: 'research-direct',
+        role: 'admin',
+      },
+    ]);
+
+    render(<AdminPage />);
+
+    expect(await screen.findByRole('heading', { name: '我的项目' })).toBeInTheDocument();
+    expect(screen.getByText('我参与的项目')).toBeInTheDocument();
+    expect(mocks.listProjects).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('heading', { name: '项目列表' })).toBeInTheDocument();
+    expect(screen.getAllByText('智慧大脑agent').length).toBeGreaterThan(0);
+  });
+  it('keeps the existing project-management catalogue when the personal project request fails', async () => {
+    mocks.listProjects.mockRejectedValue(new Error('personal projects unavailable'));
+
+    render(<AdminPage />);
+
+    expect(await screen.findByRole('heading', { name: '项目列表' })).toBeInTheDocument();
+    expect(screen.getAllByText('智慧大脑agent').length).toBeGreaterThan(0);
+    expect(screen.getByRole('heading', { name: '我的项目' })).toBeInTheDocument();
+    expect(screen.getByText('暂无参与项目')).toBeInTheDocument();
+  });
+
   it('uses an AI-workspace-style top navigation and keeps the selected management view in the URL', async () => {
     const user = userEvent.setup();
     render(<AdminPage />);
@@ -452,7 +483,7 @@ describe('AdminPage', () => {
 
     expect((await screen.findAllByText('全局管理项目')).length).toBeGreaterThan(0);
     expect(mocks.listProjectCatalog).toHaveBeenCalledTimes(1);
-    expect(mocks.listProjects).not.toHaveBeenCalled();
+    expect(mocks.listProjects).toHaveBeenCalledTimes(1);
   });
 
   it('hides project creation from a system administrator other than hanshangbo', async () => {
@@ -553,7 +584,7 @@ describe('AdminPage', () => {
 
     expect((await screen.findAllByText('智慧大脑agent')).length).toBeGreaterThan(0);
     expect(mocks.listProjectCatalog).toHaveBeenCalledTimes(1);
-    expect(mocks.listProjects).not.toHaveBeenCalled();
+    expect(mocks.listProjects).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('heading', { name: '创建项目' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '创建项目' })).not.toBeInTheDocument();
   });

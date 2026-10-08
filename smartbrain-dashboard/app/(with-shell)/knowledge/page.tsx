@@ -39,12 +39,14 @@ const CATEGORY_OPTIONS: { value: KnowledgeLedgerCategory; label: string }[] = [
   { value: 'project_material', label: '项目原始资料' },
   { value: 'project_wiki_source', label: '项目 Wiki 原始资料' },
   { value: 'meeting_record', label: '会议记录' },
+  { value: 'conversation_record', label: '对话记录' },
 ];
 
 const categoryLabel: Record<KnowledgeLedgerCategory, string> = {
   project_material: '项目原始资料',
   project_wiki_source: '项目 Wiki 资料',
   meeting_record: '会议记录',
+  conversation_record: '对话记录',
 };
 
 const approvalLabel: Record<KnowledgeApprovalStatus, string> = {
@@ -437,6 +439,7 @@ export default function KnowledgePage() {
                         onPreview={() => void handlePreview(document)}
                         onRename={() => openRename(document)}
                         onMove={() => openMove(document)}
+                        readOnly={category === 'conversation_record'}
                       />
                     ))}
                   </tbody>
@@ -528,6 +531,7 @@ function LedgerRow({
   onPreview,
   onRename,
   onMove,
+  readOnly,
 }: {
   document: KnowledgeLedgerDocument;
   canReview: boolean;
@@ -539,6 +543,7 @@ function LedgerRow({
   onPreview: () => void;
   onRename: () => void;
   onMove: () => void;
+  readOnly?: boolean;
 }) {
   return (
     <tr className="align-top hover:bg-[#f7faff]">
@@ -572,19 +577,19 @@ function LedgerRow({
       </td>
         <td className="px-5 py-4 text-right">
           <div className="flex flex-wrap justify-end gap-2">
-            <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={onPreview}>
+            {!readOnly && <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={onPreview}>
               <Eye size={14} aria-hidden={true} />预览
-            </Button>
-            <a href={knowledgeAssetDownloadUrl(document.asset_type, document.asset_id)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#d7e0ec] bg-white px-3 text-xs font-medium text-[#355170] hover:bg-[#f7f9fc]">
+            </Button>}
+            {!readOnly && <a href={knowledgeAssetDownloadUrl(document.asset_type, document.asset_id)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-[#d7e0ec] bg-white px-3 text-xs font-medium text-[#355170] hover:bg-[#f7f9fc]">
               <Download size={14} aria-hidden={true} />下载
-            </a>
-            {canManage && (
+            </a>}
+            {!readOnly && canManage && (
               <>
                 <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={onRename}><Pencil size={14} />重命名</Button>
                 <Button type="button" size="sm" variant="secondary" disabled={busy} onClick={onMove}><MoveRight size={14} />迁移</Button>
               </>
             )}
-          {canDelete && (
+          {!readOnly && canDelete && (
               <Button
                 type="button"
                 size="sm"
@@ -598,7 +603,7 @@ function LedgerRow({
                 {busy ? '处理中' : '删除'}
               </Button>
           )}
-          {canReview && document.approval_status === 'pending_review' ? (
+          {!readOnly && canReview && document.approval_status === 'pending_review' ? (
             <Button type="button" size="sm" variant="secondary" onClick={onReview}>
               去审批
             </Button>

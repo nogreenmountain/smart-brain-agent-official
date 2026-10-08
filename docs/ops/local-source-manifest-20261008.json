@@ -1,0 +1,545 @@
+{
+  "date": "2026-10-08",
+  "local_source_base": "8280adda3846af082a386a2c3fd20da8c01dca4a",
+  "official_sync_base": "5a94286b993b66b1e97d51cdecdbe6533a1e87ae",
+  "scope": "changed and new candidate source/test/migration/deployment files; not a whole-repository manifest",
+  "hash_mode": "sha256 of original working-tree bytes; CRLF may differ from committed LF",
+  "files": [
+    {
+      "path": "agentops_local/ai_usage/daily_log_service.py",
+      "bytes": 14241,
+      "sha256": "4aa7740bc0e87b55bc09e42773bc0ad6bc8e05af648606f8f61f10abc8ef28dc",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "1a347fc2ea9aab1a49b7b47235246f66ffd20de07a981c75249f6bcd944c7f1e"
+    },
+    {
+      "path": "agentops_local/ai_usage/gateway.py",
+      "bytes": 5378,
+      "sha256": "560c7430b04823281683183779192ab4fafb0e6685e2ce7d0e7696fa8ee97537",
+      "same_as_official": true,
+      "snapshot_sha256_lf": "560c7430b04823281683183779192ab4fafb0e6685e2ce7d0e7696fa8ee97537"
+    },
+    {
+      "path": "agentops_local/ai_usage/gateway_content.py",
+      "bytes": 1049,
+      "sha256": "cdce1f4269e079a160b8ef8bdcfcda363905758aa8f2a024d06fcf1126994481",
+      "same_as_official": true,
+      "snapshot_sha256_lf": "b8b2f0094035963e0b15fd945d16616e19f74a4059d2f46828551a77532805f7"
+    },
+    {
+      "path": "agentops_local/ai_usage/gateway_tokens.py",
+      "bytes": 2650,
+      "sha256": "6914fcf3c8f33f65fb70fa9dadaa76f4fc04eb7013a0f662c210081c34ac19ae",
+      "same_as_official": true,
+      "snapshot_sha256_lf": "6914fcf3c8f33f65fb70fa9dadaa76f4fc04eb7013a0f662c210081c34ac19ae"
+    },
+    {
+      "path": "agentops_local/ai_usage/litellm_management.py",
+      "bytes": 5140,
+      "sha256": "17ca02e86e03e7f30af5a85dded70dcc8b97a583ae06fc3dcbcc70edf0027429",
+      "same_as_official": true,
+      "snapshot_sha256_lf": "17ca02e86e03e7f30af5a85dded70dcc8b97a583ae06fc3dcbcc70edf0027429"
+    },
+    {
+      "path": "agentops_local/ai_usage/llm_key_operations.py",
+      "bytes": 17582,
+      "sha256": "c4059cf6792301b1880e5a3778087aa3625265710357b4680b1ac282206bdcf5",
+      "same_as_official": true,
+      "snapshot_sha256_lf": "c4059cf6792301b1880e5a3778087aa3625265710357b4680b1ac282206bdcf5"
+    },
+    {
+      "path": "agentops_local/ai_usage/llm_key_quota.py",
+      "bytes": 759,
+      "sha256": "43aae026efa5abfbdc5f8bda2c17db3ab9b14a3a6168e32d92b94f8325dd0bca",
+      "same_as_official": true,
+      "snapshot_sha256_lf": "43aae026efa5abfbdc5f8bda2c17db3ab9b14a3a6168e32d92b94f8325dd0bca"
+    },
+    {
+      "path": "agentops_local/ai_usage/llm_key_reconcile_worker.py",
+      "bytes": 3306,
+      "sha256": "1000b21990a018f17ab54dcd98b4a8f65f91910278e91032ed13bd4a17f07f97",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "1000b21990a018f17ab54dcd98b4a8f65f91910278e91032ed13bd4a17f07f97"
+    },
+    {
+      "path": "agentops_local/ai_usage/llm_key_runtime.py",
+      "bytes": 843,
+      "sha256": "4914da5f0b19bfb36852c775c4ca39bb424c5c2d9b6d6083153ba7704a84cc4d",
+      "same_as_official": true,
+      "snapshot_sha256_lf": "4914da5f0b19bfb36852c775c4ca39bb424c5c2d9b6d6083153ba7704a84cc4d"
+    },
+    {
+      "path": "agentops_local/api/personal_gateway_app.py",
+      "bytes": 303,
+      "sha256": "50ea018b7fee72be40ee29efabefaa4de46262543ce473a3bc89ff5b5a21b7ff",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "50ea018b7fee72be40ee29efabefaa4de46262543ce473a3bc89ff5b5a21b7ff"
+    },
+    {
+      "path": "agentops_local/api/personal_gateway_proxy.py",
+      "bytes": 12565,
+      "sha256": "b15e505eb4d539aea711e9cdff72bcef3f085c693da70848a3e7dca5abf13b52",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "b15e505eb4d539aea711e9cdff72bcef3f085c693da70848a3e7dca5abf13b52"
+    },
+    {
+      "path": "agentops_local/api/personal_gateway_scope.py",
+      "bytes": 3433,
+      "sha256": "40f49c992f163575ff9e6bb259d929aafe6332475d37da41256a430d72d8e3f5",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "40f49c992f163575ff9e6bb259d929aafe6332475d37da41256a430d72d8e3f5"
+    },
+    {
+      "path": "agentops_local/api/routes/v4/__init__.py",
+      "bytes": 3717,
+      "sha256": "11b2da13a5dc6d6945c4936c0738fc23fa29a69f05a3f2305a64922fb2a12db6",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "3abb8222789b2118c35261a1fd4ef70cb868affc50197763b76e2e11d5971df8"
+    },
+    {
+      "path": "agentops_local/api/routes/v4/ai_chat.py",
+      "bytes": 25651,
+      "sha256": "fd43f4d1b96e24918c359867e5b4ed50389f650084fe06d79e459a7603fb4055",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "558ef12a021e418c15c8b4f9d44d7eb9a6446330145a0932603d8978660088d5"
+    },
+    {
+      "path": "agentops_local/api/routes/v4/ai_gateway.py",
+      "bytes": 57252,
+      "sha256": "68dbeb3ad75eac33dd9e7d2b1bd11f8104eb758a048f22dbb35dc8871e0198ad",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "20cb70fc89f26852fb80a59b60cb4dbcdf87f5ff6de48185324db59576d911f6"
+    },
+    {
+      "path": "agentops_local/api/routes/v4/ai_usage.py",
+      "bytes": 138268,
+      "sha256": "6baff98c74e87c077246ca93d30c5a533a2b6b2ffc4da5916ed2ce399d28ff50",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "123390f14ec6252e2f3cc495d932f6257af555afc78ec363809ca461e0d8768b"
+    },
+    {
+      "path": "agentops_local/api/routes/v4/knowledge.py",
+      "bytes": 59838,
+      "sha256": "e9c55dd3409fe01aaa76892b41e3f963ecda55f9306fc8c1a72482eb999570fc",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "fbf4befad2c2773dad703c807c750f38172675467f5fad0372d81c5355e890fa"
+    },
+    {
+      "path": "agentops_local/api/routes/v4/project_agents.py",
+      "bytes": 15924,
+      "sha256": "3122ade7e882d600dc893e0b978b5944cacd8d30d98abc0455fe9542cb01a8e4",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "3122ade7e882d600dc893e0b978b5944cacd8d30d98abc0455fe9542cb01a8e4"
+    },
+    {
+      "path": "agentops_local/api/routes/v4/projects.py",
+      "bytes": 67814,
+      "sha256": "1bcaccc1c698a334f61ff274cd7437d1e32a73519e22c6b87a822b387582d554",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "d3e23a54b3e917cfb15823636adb41f5bbbf65ea94b39e54d6cb815c2a3df7a7"
+    },
+    {
+      "path": "agentops_local/common/response_cache.py",
+      "bytes": 4404,
+      "sha256": "d8a433558b2629bc5669c6dd784d614f9749d0ca0bb3fd7e08ebfdb1863d950d",
+      "same_as_official": true,
+      "snapshot_sha256_lf": "d8a433558b2629bc5669c6dd784d614f9749d0ca0bb3fd7e08ebfdb1863d950d"
+    },
+    {
+      "path": "agentops_local/project_wiki/compiler.py",
+      "bytes": 7104,
+      "sha256": "7ecd6f923cb0fcc7ce84a3af08b888cca7afc706270b2f04a39d372265637ecf",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "6dfc246488cd8e0b3be3970ea66502974ef88896327b09b7f03e811bd3c6079c"
+    },
+    {
+      "path": "agentops_local/project_wiki/domain.py",
+      "bytes": 8976,
+      "sha256": "40fe8394a658cae983628706aed47e8c2430bb88e30d257eb4c72eafadc14d23",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "c5903522cb286d8c1a517aef6defa6b2375d61a0d4281a59384e6f049105697f"
+    },
+    {
+      "path": "agentops_local/project_wiki/service.py",
+      "bytes": 33185,
+      "sha256": "4e4f3df513268a39f3e94f860f418eb27bd56de0cf22c558cfbc7e1d97457e04",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "d09d6a90aa897cc27b43156a0ce2c7a21b57f7e12675ac1899c9ac766dd19cff"
+    },
+    {
+      "path": "agentops_local/tests/test_ai_daily_worklog_service.py",
+      "bytes": 8093,
+      "sha256": "728f154103980868236639047686ce02b664c0ef06ae0e3ee2861242cec5c809",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "f56a96868d86fecb0bf77f0c63eee28c0c47c8accac2006a9df7afa91f450ae7"
+    },
+    {
+      "path": "agentops_local/tests/test_ai_usage_trace_query.py",
+      "bytes": 9493,
+      "sha256": "150a502832daf8b468be78a138e1fedafa01b9e37a9da8738559ad72dad5e77d",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "44c6d812afb5d6642ff852f4ec11e82ff3ade4b628159a00c8e5012b243764a3"
+    },
+    {
+      "path": "agentops_local/tests/test_litellm_management.py",
+      "bytes": 7217,
+      "sha256": "3741edc959224d04a8a98944af36f53af6e45ffa94f0f99344166c1afb32e32f",
+      "same_as_official": true,
+      "snapshot_sha256_lf": "3741edc959224d04a8a98944af36f53af6e45ffa94f0f99344166c1afb32e32f"
+    },
+    {
+      "path": "agentops_local/tests/test_llm_key_operations_pg.py",
+      "bytes": 19180,
+      "sha256": "d45830646efbb65f18d189c9973882e8c56807b92bce12f09b9f69e01e819c62",
+      "same_as_official": true,
+      "snapshot_sha256_lf": "d45830646efbb65f18d189c9973882e8c56807b92bce12f09b9f69e01e819c62"
+    },
+    {
+      "path": "agentops_local/tests/test_llm_key_reconcile_worker.py",
+      "bytes": 2905,
+      "sha256": "e0816b0427fa64efc2c0ca20d73309b79fbcc11aa91c48daf8169028dff1c7a0",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "e0816b0427fa64efc2c0ca20d73309b79fbcc11aa91c48daf8169028dff1c7a0"
+    },
+    {
+      "path": "agentops_local/tests/test_llm_key_runtime.py",
+      "bytes": 1572,
+      "sha256": "c41219743ca037164c75b821bff1034f77228c13c3caa07c27e4aac8da1e3a05",
+      "same_as_official": true,
+      "snapshot_sha256_lf": "c41219743ca037164c75b821bff1034f77228c13c3caa07c27e4aac8da1e3a05"
+    },
+    {
+      "path": "agentops_local/tests/test_personal_gateway_proxy.py",
+      "bytes": 4989,
+      "sha256": "5a89b75539a2b5ed87ca4117fb98803ee432eb938b7944bb5ee96a0551bb86a1",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "5a89b75539a2b5ed87ca4117fb98803ee432eb938b7944bb5ee96a0551bb86a1"
+    },
+    {
+      "path": "agentops_local/tests/test_personal_gateway_route_registration.py",
+      "bytes": 1252,
+      "sha256": "7eb93cb368161a3b4f6331f4f3880164b646d5e77d45ce346c8fd263ca2cf1fc",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "7eb93cb368161a3b4f6331f4f3880164b646d5e77d45ce346c8fd263ca2cf1fc"
+    },
+    {
+      "path": "agentops_local/tests/test_project_agents.py",
+      "bytes": 6004,
+      "sha256": "828040810402af1ab0d853b2bbe23e080c846345fce5ded78c6e1c36f952109c",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "828040810402af1ab0d853b2bbe23e080c846345fce5ded78c6e1c36f952109c"
+    },
+    {
+      "path": "agentops_local/tests/test_project_wiki_domain.py",
+      "bytes": 8725,
+      "sha256": "eb9cada86fe4abb15ef2f3573ee762500b276174e6ebceab8a04a5096c4f4e8a",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "68db0e666e538642a123b24868f391fc802a078e5fc8fdb8c52c4bf37936c2ef"
+    },
+    {
+      "path": "agentops_local/tests/test_smartbrain_codex_adapter.py",
+      "bytes": 4912,
+      "sha256": "73bacab73bffbd5625ca3440251432dd67c6e2c46f40135700af077a3a14994c",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "73bacab73bffbd5625ca3440251432dd67c6e2c46f40135700af077a3a14994c"
+    },
+    {
+      "path": "deploy/dashboard-workday-records-20260922-r1/Dockerfile",
+      "bytes": 243,
+      "sha256": "d893cef7993bf26c5d5fed5a94b043e08b0b23126f10bbce0e8a23593d9c2e38",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "d893cef7993bf26c5d5fed5a94b043e08b0b23126f10bbce0e8a23593d9c2e38"
+    },
+    {
+      "path": "deploy/llm-key-operations/Dockerfile",
+      "bytes": 1246,
+      "sha256": "1ed4e871b1a8c39be6f0db9da681257b0f491e689d637211d5b8d4cf044e8b7f",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "1ed4e871b1a8c39be6f0db9da681257b0f491e689d637211d5b8d4cf044e8b7f"
+    },
+    {
+      "path": "deploy/llm-key-operations/Dockerfile.personal-api-usage",
+      "bytes": 357,
+      "sha256": "586c8a6c64b33a757b406fafd4311907ec6d5fb0e9507bdadb170ae5fcb2ac0d",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "586c8a6c64b33a757b406fafd4311907ec6d5fb0e9507bdadb170ae5fcb2ac0d"
+    },
+    {
+      "path": "deploy/llm-key-operations/Dockerfile.personal-proxy",
+      "bytes": 968,
+      "sha256": "45e7e655662db00ff653d9faa5f00d2c4e4c2266aabb98337777a964b7a1b9c3",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "45e7e655662db00ff653d9faa5f00d2c4e4c2266aabb98337777a964b7a1b9c3"
+    },
+    {
+      "path": "deploy/llm-key-operations/smartbrain-llm-key-reconcile.service",
+      "bytes": 515,
+      "sha256": "267e92fef93ddf9170afb47f6df4b43c4a1eeded7ae673666c1b5f3e5786d2b9",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "267e92fef93ddf9170afb47f6df4b43c4a1eeded7ae673666c1b5f3e5786d2b9"
+    },
+    {
+      "path": "deploy/llm-key-operations/smartbrain-llm-key-reconcile.timer",
+      "bytes": 203,
+      "sha256": "e7d92a39608015d26a2cad27a8f0574b5fadfabc0654133a4e9acfa9df60ea55",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "e7d92a39608015d26a2cad27a8f0574b5fadfabc0654133a4e9acfa9df60ea55"
+    },
+    {
+      "path": "deploy/llm-key-operations/smartbrain-personal-registered-api.service",
+      "bytes": 478,
+      "sha256": "5f6a51b1c8727fa7dc5408b9e6d6d9b0ba7695eb3659b368a700821aa19d3bdc",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "5f6a51b1c8727fa7dc5408b9e6d6d9b0ba7695eb3659b368a700821aa19d3bdc"
+    },
+    {
+      "path": "deploy/workday-gateway-read-20260921-r1/Dockerfile",
+      "bytes": 555,
+      "sha256": "f7710e03b69bd3b1c9227486daf8a74a66120917356d7966ee2f148b0213fefa",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "f7710e03b69bd3b1c9227486daf8a74a66120917356d7966ee2f148b0213fefa"
+    },
+    {
+      "path": "smartbrain-dashboard/app/(with-shell)/admin/page.test.tsx",
+      "bytes": 45711,
+      "sha256": "29f5f66f8dcee7b56c36133204563300d28dc293056300020bc9f72668e4de54",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "29f5f66f8dcee7b56c36133204563300d28dc293056300020bc9f72668e4de54"
+    },
+    {
+      "path": "smartbrain-dashboard/app/(with-shell)/admin/page.tsx",
+      "bytes": 77016,
+      "sha256": "c7fd0eb18480abcecc41dbf906677273892788e108bb7fa3625f0e4304ac6378",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "c7fd0eb18480abcecc41dbf906677273892788e108bb7fa3625f0e4304ac6378"
+    },
+    {
+      "path": "smartbrain-dashboard/app/(with-shell)/knowledge/page.tsx",
+      "bytes": 27569,
+      "sha256": "34607cea8f98dce20eba4f1c36fbd1458a581ce051423a3445b9e8787e6e17a0",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "4aad306a68a22d4bc668cf30517b96635ab113b4a999d14af2273cb59a2a35dc"
+    },
+    {
+      "path": "smartbrain-dashboard/app/(with-shell)/monitor/setup/page.tsx",
+      "bytes": 129,
+      "sha256": "ea6c1d9fdb920de8bb76aee693413d0a37974c154fa1ac3c6f22c86a9600124b",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "ea6c1d9fdb920de8bb76aee693413d0a37974c154fa1ac3c6f22c86a9600124b"
+    },
+    {
+      "path": "smartbrain-dashboard/app/(with-shell)/profile/page.test.tsx",
+      "bytes": 7571,
+      "sha256": "a2c07b35bf5b4926a8ff2181af9206f10d2b13c0cb53b5a438aa424d6686d57e",
+      "same_as_official": true,
+      "snapshot_sha256_lf": "285611bd44e07c1d86ef74c048377f0dd7e5e95cc9d539363f15e40914779bd1"
+    },
+    {
+      "path": "smartbrain-dashboard/app/(with-shell)/profile/page.tsx",
+      "bytes": 17375,
+      "sha256": "4c45656de020afee428c01d87419f46d981c26c4dbdbc9cce26d5ff1e934165a",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "f5447852f99900d43ba8e0198bb1113b33e4a540eb240dff8b522f61bc352f16"
+    },
+    {
+      "path": "smartbrain-dashboard/app/(with-shell)/workday/legacy-page.tsx",
+      "bytes": 27638,
+      "sha256": "a67617a3888e0bd4aaf704af5abcdc02061ea2d9e8ca50b13b5a1b96ed2245e4",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "11fa737d391cdf218e0a3a12ad2745da549f2f535b9b5af25d77cf4613b5a55a"
+    },
+    {
+      "path": "smartbrain-dashboard/components/Shell.tsx",
+      "bytes": 5261,
+      "sha256": "0c30e69837fb4ca14fbf523e816a1f917e7a3e662af1d7ca24e02881da655d95",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "cd2959d3ed05146acaeab9a33e6f4f29afe761ba39b8a34ed2a719d605800ec6"
+    },
+    {
+      "path": "smartbrain-dashboard/components/ai-workspace/AIWorkspacePage.test.tsx",
+      "bytes": 1863,
+      "sha256": "681529adac7709708da5d0023d9a4ce6c05409ae180771ec2bf93f85d7d055f2",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "c08c9d5b60dff156c720f96a9fea3eae1ff107886a37c8794cf8c00c55ed7603"
+    },
+    {
+      "path": "smartbrain-dashboard/components/ai-workspace/AIWorkspacePage.tsx",
+      "bytes": 4871,
+      "sha256": "33ff51bb30471e0d9a0f856467fe95a4e3eea34d2cec8389dde09da55157f2ce",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "e67a0b0f567db43f472f1e0b566694a9fe45bfbef95dc8a06958a54bd75ab30a"
+    },
+    {
+      "path": "smartbrain-dashboard/components/management-workspace/GatewayKeyRequestsPanel.tsx",
+      "bytes": 2709,
+      "sha256": "233fe1dcb8e7a17b127739e2c6fbd73686df0845f8909f1fc869126a8a43743a",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "233fe1dcb8e7a17b127739e2c6fbd73686df0845f8909f1fc869126a8a43743a"
+    },
+    {
+      "path": "smartbrain-dashboard/components/profile/PersonalApiKeys.test.tsx",
+      "bytes": 12857,
+      "sha256": "fe5347a1ecdc73a6552ffba22eb2a64a03ba4795f65025016d92a3f39c4f9eb4",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "fe5347a1ecdc73a6552ffba22eb2a64a03ba4795f65025016d92a3f39c4f9eb4"
+    },
+    {
+      "path": "smartbrain-dashboard/components/profile/PersonalApiKeys.tsx",
+      "bytes": 18668,
+      "sha256": "afcd24e9da6b903e5c2af794693609b684f5ee3136247ad7c492baaa6911528d",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "afcd24e9da6b903e5c2af794693609b684f5ee3136247ad7c492baaa6911528d"
+    },
+    {
+      "path": "smartbrain-dashboard/components/profile/PersonalUsageStats.test.tsx",
+      "bytes": 1092,
+      "sha256": "99eb49bc35f4c5cd358aefb979b95717207e484883ff7dfa3d01d14838a29042",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "99eb49bc35f4c5cd358aefb979b95717207e484883ff7dfa3d01d14838a29042"
+    },
+    {
+      "path": "smartbrain-dashboard/components/profile/PersonalUsageStats.tsx",
+      "bytes": 2602,
+      "sha256": "c81598b56b79b23a062ae97dcb8efbfd837d96e7a6f0a9eef671a9454ae683a2",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "c81598b56b79b23a062ae97dcb8efbfd837d96e7a6f0a9eef671a9454ae683a2"
+    },
+    {
+      "path": "smartbrain-dashboard/components/project/ProjectAgentsPanel.test.tsx",
+      "bytes": 2776,
+      "sha256": "4651002ee64a3acf90788cc7119f7e2a7b398a218dd8fc5603740493ac25a965",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "4651002ee64a3acf90788cc7119f7e2a7b398a218dd8fc5603740493ac25a965"
+    },
+    {
+      "path": "smartbrain-dashboard/components/project/ProjectAgentsPanel.tsx",
+      "bytes": 11227,
+      "sha256": "12066941a18cdae21beeda84e1c2ae8d6c1b8cb6df2051eba7418ef14e252509",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "12066941a18cdae21beeda84e1c2ae8d6c1b8cb6df2051eba7418ef14e252509"
+    },
+    {
+      "path": "smartbrain-dashboard/components/project/WikiUploadPieChart.test.tsx",
+      "bytes": 1108,
+      "sha256": "bf53c5cc0a06e48c3929ea871535b7df66d38524109fa58d1f6c5327dc78dfd7",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "bf53c5cc0a06e48c3929ea871535b7df66d38524109fa58d1f6c5327dc78dfd7"
+    },
+    {
+      "path": "smartbrain-dashboard/components/project/WikiUploadPieChart.tsx",
+      "bytes": 2715,
+      "sha256": "9fa8b225e8828d833f6e321884d15884d20ac8edc3b3d177c52454b712f5d1f8",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "9fa8b225e8828d833f6e321884d15884d20ac8edc3b3d177c52454b712f5d1f8"
+    },
+    {
+      "path": "smartbrain-dashboard/lib/api.gateway-keys.test.ts",
+      "bytes": 2012,
+      "sha256": "9c34021533ff65afaa5097fbb89e3f2e48252299e259f00a3d4e854ed52554fe",
+      "same_as_official": true,
+      "snapshot_sha256_lf": "9c34021533ff65afaa5097fbb89e3f2e48252299e259f00a3d4e854ed52554fe"
+    },
+    {
+      "path": "smartbrain-dashboard/lib/api.project-agents.test.ts",
+      "bytes": 2908,
+      "sha256": "8655cb33ce52791ee35d300363904797e80ee69c7f4a65853e90f2406f60b31f",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "8655cb33ce52791ee35d300363904797e80ee69c7f4a65853e90f2406f60b31f"
+    },
+    {
+      "path": "smartbrain-dashboard/lib/api.ts",
+      "bytes": 67203,
+      "sha256": "03745cd743c472afe804d97566ee16b8f2ea25e9f249ca531dd5c9ffd1f591a7",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "03745cd743c472afe804d97566ee16b8f2ea25e9f249ca531dd5c9ffd1f591a7"
+    },
+    {
+      "path": "smartbrain-dashboard/lib/projectAdapterLauncher.test.ts",
+      "bytes": 1590,
+      "sha256": "2b208610757a1abd992802f72603e946e5d28e571dd6527838d15fae63aa5b5c",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "2b208610757a1abd992802f72603e946e5d28e571dd6527838d15fae63aa5b5c"
+    },
+    {
+      "path": "smartbrain-dashboard/lib/projectAdapterLauncher.ts",
+      "bytes": 8228,
+      "sha256": "75c40f0fe90474350e9c273ea2c4cfcd85618765f73c70e0ca7cf5b466d5c832",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "9c691675a645c0aad20c65ad8c8025382ba56c37423681f442ef03a49cf2347c"
+    },
+    {
+      "path": "smartbrain-dashboard/pnpm-lock.yaml",
+      "bytes": 170488,
+      "sha256": "b7cb2349daa28f580b7182707efeb110475464f0afd766eeb0d1ba70582c049e",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "b7cb2349daa28f580b7182707efeb110475464f0afd766eeb0d1ba70582c049e"
+    },
+    {
+      "path": "smartbrain-dashboard/public/downloads/Start-SmartBrain-CodexProject.ps1",
+      "bytes": 6938,
+      "sha256": "5ecaee40d9f2bdd5339ac4ded8a01855570d1853c19422b2013e25da14c1b56a",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "e9cbf3bcd5836e5dec13a6a70993a28217c44c5db22eefb05550905d2e27954b"
+    },
+    {
+      "path": "smartbrain-dashboard/public/downloads/Start-SmartBrainCodexAdapter.ps1",
+      "bytes": 798,
+      "sha256": "a57ba798f6091f41a774def99d9d864c97daecc442953f1e15505307810136e4",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "a57ba798f6091f41a774def99d9d864c97daecc442953f1e15505307810136e4"
+    },
+    {
+      "path": "smartbrain-dashboard/public/downloads/smartbrain_codex_adapter.py",
+      "bytes": 13972,
+      "sha256": "128ff972cd01c8d6fcfe373674b5b3428ee8bba96873cf82dbd33c231803cb5c",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "d18e98f30898775340246e9b2cc88ed90c03a65097f9b75a5c3ceebf5329e889"
+    },
+    {
+      "path": "smartbrain-dashboard/utils/runtime-security-contract.test.ts",
+      "bytes": 2292,
+      "sha256": "69c7a483da106102f338903b743abacea02ad164f0b21c1b5c12bb283e9b85f5",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "52a4153828109d0f4b190af64e025c4035f914e38f15b9693dc239a6a9151dc1"
+    },
+    {
+      "path": "supabase/migrations/20260915000000_llm_key_operations.sql",
+      "bytes": 3368,
+      "sha256": "4cd412e97d61fb1c5bbb52a731599952aad8c39333870a5550cc399cc1912642",
+      "same_as_official": true,
+      "snapshot_sha256_lf": "4cd412e97d61fb1c5bbb52a731599952aad8c39333870a5550cc399cc1912642"
+    },
+    {
+      "path": "supabase/migrations/20260921000000_personal_api_usage_records.sql",
+      "bytes": 707,
+      "sha256": "37b98fff7d82a2f2a681ec0f4752e569d0c92c3334ee516b6a5a057417154faf",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "37b98fff7d82a2f2a681ec0f4752e569d0c92c3334ee516b6a5a057417154faf"
+    },
+    {
+      "path": "supabase/migrations/20260923000000_project_agents_context_conversations.sql",
+      "bytes": 12288,
+      "sha256": "8b7ed986f0fa5afa2107e0e36fce586084c79f48fe0b45e36cf956b3aa6ed7e7",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "8b7ed986f0fa5afa2107e0e36fce586084c79f48fe0b45e36cf956b3aa6ed7e7"
+    },
+    {
+      "path": "tools/__init__.py",
+      "bytes": 47,
+      "sha256": "0567cdd189db2beb9d01e33c36a4f5fd38cbb48c52a8e293ea6a3ec1419074bc",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "0567cdd189db2beb9d01e33c36a4f5fd38cbb48c52a8e293ea6a3ec1419074bc"
+    },
+    {
+      "path": "tools/smartbrain_codex_adapter.py",
+      "bytes": 13972,
+      "sha256": "128ff972cd01c8d6fcfe373674b5b3428ee8bba96873cf82dbd33c231803cb5c",
+      "same_as_official": false,
+      "snapshot_sha256_lf": "d18e98f30898775340246e9b2cc88ed90c03a65097f9b75a5c3ceebf5329e889"
+    }
+  ],
+  "public_normalizations": [
+    "CRLF is normalized by Git where applicable",
+    "Start-SmartBrain-CodexProject.ps1 trailing empty line removed; behavior unchanged"
+  ]
+}

@@ -26,6 +26,7 @@ from .member_wiki import router as member_wiki_router
 from .meeting_summaries import router as meeting_summaries_router
 from .team_members import router as team_members_router
 from .ai_gateway import router as ai_gateway_router, device_router as ai_gateway_device_router
+from .project_agents import client_router as project_agents_client_router, router as project_agents_router
 
 __all__ = ["router"]
 
@@ -99,3 +100,5 @@ router.include_router(meeting_summaries_router)
 router.include_router(team_members_router)
 router.include_router(ai_gateway_router)
 router.include_router(ai_gateway_device_router)
+router.include_router(project_agents_router)
+router.include_router(project_agents_client_router)

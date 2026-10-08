@@ -1,0 +1,17 @@
+ARG BASE_IMAGE=smartbrain/personal-key-api:2026.09.21-operations-r2
+FROM ${BASE_IMAGE}
+
+USER 0:0
+COPY personal_gateway_proxy.py /app/agentops/api/personal_gateway_proxy.py
+COPY personal_gateway_scope.py /app/agentops/api/personal_gateway_scope.py
+COPY personal_gateway_app.py /app/agentops/api/personal_gateway_app.py
+COPY ai_gateway.py /app/agentops/api/routes/v4/ai_gateway.py
+COPY ai_chat.py /app/agentops/api/routes/v4/ai_chat.py
+RUN /app/.venv/bin/python -m py_compile \
+    /app/agentops/api/personal_gateway_proxy.py \
+    /app/agentops/api/personal_gateway_scope.py \
+    /app/agentops/api/personal_gateway_app.py \
+    /app/agentops/api/routes/v4/ai_gateway.py \
+    /app/agentops/api/routes/v4/ai_chat.py
+RUN chown -R 10001:10001 /app/agentops/api/personal_gateway_proxy.py /app/agentops/api/personal_gateway_scope.py /app/agentops/api/personal_gateway_app.py /app/agentops/api/routes/v4/ai_gateway.py /app/agentops/api/routes/v4/ai_chat.py
+USER 10001:10001

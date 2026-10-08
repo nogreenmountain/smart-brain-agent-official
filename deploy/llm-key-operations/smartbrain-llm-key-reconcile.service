@@ -1,0 +1,15 @@
+[Unit]
+Description=SmartBrain personal LLM key operation reconciler (gated)
+ConditionPathExists=/usr/bin/docker
+ConditionPathExists=/etc/smartbrain/llm-gateway-management.env
+After=docker.service smartbrain-stack.service
+Wants=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/docker exec smartbrain-personal-key-api-20260915-r1 /app/.venv/bin/python -m agentops.ai_usage.llm_key_reconcile_worker --once --limit 25
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/run
