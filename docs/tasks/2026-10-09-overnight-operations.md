@@ -64,3 +64,7 @@
 18:50生产窄发布：[记录](../releases/overnight-clickhouse-buffer-20261009-r2.md)。双锁/backup20/最新四盘和内存通过，仅system.metric_log表级max_compress_block_size65536及原inodeXML同步/重载，SHA **e14fd07b4f175eccaab22c1dfde8d5bb08ea377fdfceb8828e06db7dd56643cd**；无生产容器重启、日志删除或业务表修改。CH同CID/image/17:49启动/PID930830，metric UUID157524f1保持。18:51独立核对全部1025容器配置代际、23业务对象UUID/结构hash和元数据行数、8公网/个人current预算/edge/备份通过。
 
 18:51短效果：Code241仍7705/最后18:49:57，metric parts约323→38，大合并推进；两个完整后继窗口及整夜待观察。Docker40.19GiB/cold252.22GiB，储备薄，保持门禁。r3/r4/promote_ch_metric_buffer_r2全部终态，禁止重放；只观察原observer、ch_merge_space/verify和后继样本。交付XML/hash同步待本轮提交，不改原包/镜像。
+
+18:58本阶段收尾核对：18:57 Code241仍7705、最后18:49:57，无新错误；新大metric合并完成，cold270586347520字节（约252.00GiB）/Docker43146698752（40.18GiB）。observer原r2/SHA与PID872681保持，21样本/无缺口/采集错误/host OOM；18:54样本覆盖18:49–18:54，尾部27处Code241属于18:49:57的**发布前**旧错误，不能归为新设置失败。首个完全后继窗口从18:54开始，两个完整窗口尚待下次续跑核对。个人仍35/1/3，无新自然完成请求，Windows9000仍PID24744。
+
+正式交付修复提交778349b18d8b00d635cf276051abd51b254a1b64已推official/远端一致，main431022b保持；XML与生产e14fd07b逐字节一致，release-lock为current-20261009-streaming-ch-r2，23部署测试及sources检查通过。5份本轮文档镜像E盘/交付树并核对字节；heartbeat补本次新SHA/不可重放/后继窗口要求，ACTIVE/名称/日程/目标/完整prompt读回一致。保存metric-buffer-stage-checkpoint.json和脚本hash，所有候选与发布runner终态，仅原collector/heartbeat继续；未做生产回退、完整恢复或实际30人容量验收。

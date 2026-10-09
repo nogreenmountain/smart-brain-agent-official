@@ -26,3 +26,5 @@
 发布时Code2417705、最新错误18:49:57；18:51仍7705，metric active parts约323→38，较大Vertical合并进度0.659/约11.4MB跟踪内存，读取/写入2249547行。仅短窗口改善，两个完整后继采样窗口与整夜仍待；不能称所有内存/容量问题已解决。18:51cold270819864576字节（252.22GiB）、Docker43153403904（40.19GiB），继续薄储备预警，不进一步大测试/归档。
 
 证据：.artifacts/overnight-operations-20261009/ch-{wide-buffer-r3,buffer-persistence-r4,metric-buffer-r2-result,metric-buffer-r2-verified}.json；远端对应限权证据保留。r3/r4、发布runner全部终态，不重放；原observer/heartbeat继续。
+
+18:58：18:57计数仍7705/最后18:49:57，无新增；首个跨发布的18:54采样仍有旧错误，两个完全后继窗口待核对。修复及当前XML/manifest/release-lock/AI-DEPLOY已在official分支codex/overnight-operations-20261009推送，提交778349b18d8b00d635cf276051abd51b254a1b64远端一致，main不变。23部署工具测试/sources通过；文档镜像已核对，有限heartbeat ACTIVE读回。本阶段没有新增大归档，薄储备继续观察。
