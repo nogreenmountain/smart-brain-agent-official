@@ -125,3 +125,16 @@ Windows9000上游/v1/messages出现新连续限流类别：完整采样区间内
 22:32独立核对1025容器完整配置与启动代际、23业务对象结构/UUID/元数据行数、8公网入口/个人current/edge/backup20通过。CH原CID/image/17:49启动/PID930830、XML e14fd07b及原metric UUID保持，Code241累计7705/最后18:49:57未增；metric parts19/text_log19，短暂asynchronous_metric_log两part Horizontal合并progress0.16/跟踪16.5MB，未见新错误；cgroup max3492保持/0 OOM/oom_kill，5秒CPU节流0/50。六样本采样峰值执行0/排队0/DB0（非区间真实峰值），PG采样最大14 idle/1诊断active、idle-in-transaction0。
 
 最近MemAvailable8321134592字节/本轮最小8065159168字节；21:59→22:29换入63页/换出0/OOM0，memory PSI avg10/60/300均0，IO avg300 some0.14/full0.13。即时空闲Docker43093344256（40.13GiB）/cold272092278784（253.41GiB）/runtime34282086400/backup554074771456字节，储备仍薄，不新增build/发布/大归档；backup inactive/success/PID0/Job空，timer原次日02:58:03，Windows9000/PID24744保持。本轮无生产处置/主动模型/测试重放，继续原collector/heartbeat至08:30。证据cycle-20261009T1430.json及五份本轮只读证据保留，任务镜像E盘；新上游限流类别追加CURRENT并准备仅本任务文档同步official分支，不整体提交dirty树。整夜/30真实成员容量/完整PG与全writer冻结恢复仍未验。
+
+22:40:19文档收尾：本阶段仅CURRENT/本任务两份文档提交2f783d33c8ef0716a9519033054d27ada2c420c8并push official/codex/overnight-operations-20261009，远端SHA读回一致、交付工作树干净，未改main；权威/E/交付CURRENT字节一致，保留原dirty源码。本条实际push读回补充仅本地/E盘，见docs-stage-20261009T1430.json；原collector/heartbeat与02:58备份继续，不重跑本轮测试/发布。
+
+
+23:00续跑（现场23:01–23:03）：observer原r2/Invocation95565b7d/PID872681/SHA保持，70样本、最新22:59:48，无>450秒缺口/采集错误/host OOM，证据约11.49MB。22:29:48–22:59:48六个完整5分钟样本入口均200/匿名401，内部CH错误及个人超时/连接/落库错误0，current精确绑定/8执行24等待DB3预算/个人身份/edge双视图保持，无maintenance.pending。新增自然gpt-6-sol 29×200，最长64404ms，完成及已知用量标记全部保存；另2×502/不完整/用量未知，样本累计108×200/1×499/8×502。22:42:16的46842ms与Windows同秒/v1/responses capacity/server_is_overloaded46835ms对应（差7ms），22:55:01的28573ms与28540ms对应（差33ms），没有证据将其归为网关120秒截断或连接占用。
+
+22:59:48–23:01:08补查另1×502，22:59:50的24764ms与同秒上游24714ms/capacity对应（差50ms），失败完整/用量状态保持；该尾段会进入下一常规窗口，整夜汇总禁止重复加计。Windows/v1/messages本轮采样区间内7条429，其中22:30/22:31两条属于上轮尾段、本轮已获得采样覆盖，其余5条在22:33–22:34为新事件；具体调用来源/限额类型仍未核对，未直接归为个人网关失败。另两条/v1/messages capacity保留未关联状态，未主动重试/切模型/改OAuth或重启。
+
+23:01独立核对1025容器完整配置与启动代际、23业务对象结构/UUID/元数据行数、8公网入口/个人current/edge/backup20通过。CH原CID/image/17:49启动/PID930830、XML e14fd07b与原metric UUID保持，Code241累计7705/最后18:49:57未增，metric parts19/text_log18、当前无活动merge；cgroup max3492保持/0 OOM/oom_kill、5秒CPU节流0/50。最近采样个人1执行/即时0执行，六样本采样峰值执行1/排队0/DB0（非真实峰值）；PG采样最大14 idle/2 active（含诊断）、最长事务0.235395秒、idle-in-transaction0。
+
+最近MemAvailable8421343232字节/本轮最小8042278912字节；22:29→22:59换入262页/换出0/OOM0，memory PSI avg10/60/300均0，IO avg300 some0.22/full0.21。即时空闲Docker43091427328（40.13GiB）/cold272051658752（253.37GiB）/runtime34281275392/backup554074771456字节，储备仍薄；backup inactive/success/PID0/Job空，timer原次日02:58:03，Windows9000/PID24744保持。本轮无生产处置/主动模型/测试重放，原collector/heartbeat继续至08:30；证据cycle-20261009T1500.json及六份本轮只读证据保留，任务镜像E盘。CURRENT无新阶段变化，official交付仍2f783d33/干净，例行记录仅本地/E，早间或重要变化再push。整夜/30真实成员容量/完整PG与全writer冻结恢复仍未验。
+
+23:07:20后继记录：上述CURRENT不更新决定已由本条覆盖；为关闭22:30两个尾段限流未覆盖状态，以及明确新增自然流量/三次供应商过载关联，已将23:01核对结论追加CURRENT。本阶段只同步CURRENT与本任务两份文档至official分支，不改生产或main。cold按实际272051658752字节折合253.37GiB。

@@ -14,6 +14,8 @@
 
 22:31–22:34后继：Windows9000上游/v1/messages新增1个capacity及5个HTTP429/rate_limit_error，其中2个429在最新22:29采样截止后；完整六窗口personal_api无新增完成或失败，调用来源/具体限额类型未核对，后继覆盖待观察，不自动调整重试/模型/OAuth。64样本无缺口/采集错误/新OOM，CH仍7705/最后18:49:57及max3492，容器/公网/个人/edge/backup身份保持。Docker40.13GiB/cold253.41GiB仍薄；仅文档更新，原02:58备份与08:30期限保持。
 
+23:01后继：22:29:48–22:59:48新增29×gpt-6-sol 200及2×502，另22:59:50尾段1×502，三次均与Windows同秒/v1/responses capacity/server_is_overloaded对应；本轮personal_api无连接/落库/120秒截断错误。v1/messages 429/rate_limit事件已进入采样覆盖，但调用来源与具体限额类型仍未核对。70样本无缺口/采集错误/新OOM，CH累计7705/最后18:49:57、max3492不变；Docker约40.13GiB/cold253.37GiB仍薄，原备份与08:30期限保持。
+
 ## 2026-10-09 17:57夜间ClickHouse限并行已发布（内存问题仍待）
 
 核对时间：2026-10-09 17:51/17:57（Asia/Shanghai）。[实际发布](releases/overnight-clickhouse-20261009-r1.md)／[具体自审](plans/2026-10-09-overnight-clickhouse.md)：CH原CIDf0a0f6eb/imagecd450891仅配置改pool2/ratio1及三个阈值1，SHAecf3efd2；原单文件bind inode保持，17:49:40Z精确CH短停启动一次。双锁/备份20登记/四盘门槛通过，隔离同版本20000行及restart读回通过；1022无关完整容器配置代际保持、39运行、4原业务表元数据行数/8公网入口/个人/edge通过，无DDL或主动模型。
