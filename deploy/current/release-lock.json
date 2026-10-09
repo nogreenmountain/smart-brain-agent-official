@@ -1,8 +1,8 @@
 {
-  "release": "current-20261009-streaming-r2",
+  "release": "current-20261009-streaming-ch-r1",
   "observed_at": "2026-10-09T08:40:06.548649+00:00",
   "platform": "linux/amd64",
-  "source_branch": "codex/personal-api-streaming-20261009",
+  "source_branch": "codex/overnight-operations-20261009",
   "services": {
     "api": {
       "image_id": "sha256:8eac15848ae9e29080d9deba458d588e572d8b0b1188f8f10dc60040ec41d402",
@@ -532,5 +532,12 @@
     "Monitor collector",
     "adapter",
     "reconcile timer"
-  ]
+  ],
+  "configuration_overrides": {
+    "clickhouse/backup-disk.xml": {
+      "sha256": "ecf3efd265105bff68ee400364c073f53e256da913b9255d418f7e253ee284b1",
+      "observed_at": "2026-10-09T09:51:45.961488+00:00",
+      "change": "background merge pool 2, concurrency 1, related free-entry thresholds 1"
+    }
+  }
 }

@@ -1,6 +1,6 @@
 # 将当前智慧大脑部署到一台新机器
 
-入口版本：current-20261009-streaming-r2，个人API现场核对 2026-10-09 16:40（北京时间），其他组件沿用13:30–14:05快照。先读本文件，再执行命令。当前分支包含源码与个人API流式修复。
+入口版本：current-20261009-streaming-ch-r1；个人API现场核对2026-10-09 16:40、ClickHouse合并资源配置17:51（北京时间），其余组件沿用13:30–14:05快照。当前分支包含个人API流式修复和CH后台合并限并行配置，先读本文件再执行。
 
 ## 交给 AI 的任务文本
 
@@ -29,7 +29,7 @@ Git 保存代码、配置模板和结构，不保存真实密码、员工正文�
 | 模型目录 | BAAI/bge-m3、bge-reranker-v2-m3 与 MCP fastembed 缓存；离线时必须完整交付。仅有 Docker 镜像不代表模型已缓存 |
 | 操作权限 | 管理新主机 Docker／文件／数据库；读取受控包。数据迁移、真实模型验证、域名切换按实际授权执行 |
 
-原现场仍有 ClickHouse 内存压力、完整冻结备份恢复未验收等限制；本仓库整理没有修复这些事项。
+原现场ClickHouse后台合并资源配置已于17:49调整为pool2/ratio1，发布后效果见夜间发布记录；长期容量和完整冻结备份恢复仍未验收。不能把短观察称为全平台恢复通过。
 
 ## 3. 受控交付物
 
@@ -57,7 +57,7 @@ python3 deploy/current/images.py export --directory /受控备份盘/新的包�
 ## 4. 获取仓库、固定版本
 
 ```bash
-git clone --branch codex/personal-api-streaming-20261009 --single-branch \
+git clone --branch codex/overnight-operations-20261009 --single-branch \
   https://github.com/nogreenmountain/smart-brain-agent-official.git /opt/smartbrain-current
 cd /opt/smartbrain-current
 git rev-parse HEAD
@@ -82,6 +82,8 @@ python3 deploy/current/images.py import --directory /受控路径/流式修复/i
 python3 deploy/current/verify.py images
 python3 deploy/current/verify.py bundle --bundle-root /受控路径/config
 ```
+
+ClickHouse资源配置来自本分支 `deploy/current/clickhouse/backup-disk.xml`，SHA256为 `ecf3efd265105bff68ee400364c073f53e256da913b9255d418f7e253ee284b1`。它保留原备份磁盘路径并追加pool2/ratio1及相关阈值1。Compose已挂载此仓库文件；请保留本分支XML，不要用13:30历史配置包或旧分支覆盖。先按原manifest核验私有配置包，原包及镜像包无需重写；`verify.py sources`同时核对新XML。新机CH启动后必须读回两个预算与三个阈值，实际业务数据恢复仍须独立验收。
 
 模板 Env 采用 raw 格式，不做 `$`、引号或反斜杠展开。目录／文件从受控包复制后再设置服务权限：Env 0600；两个模型配置归 UID10001/GID10001、0640；三个静态站点归 UID101/GID101、目录0750／文件0640。保持配置根0700。不要把原完整 Env 中的 PATH/HOSTNAME 注入不同代基础镜像；模板列出了需要保留的业务变量。
 

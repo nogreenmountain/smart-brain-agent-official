@@ -117,6 +117,10 @@ def check_sources(repo):
             p = safe_path(here / 'runtime-sources' / role / 'agentops', name)
             if not p.is_file() or file_sha(p) != sha:
                 errors.append(f'runtime source changed: {role}/{name}')
+    for name, sha in manifest.get('configuration_files', {}).items():
+        p = safe_path(here, name)
+        if not p.is_file() or file_sha(p) != sha:
+            errors.append('deployment configuration changed: ' + name)
     return errors
 
 

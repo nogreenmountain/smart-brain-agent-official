@@ -1463,5 +1463,9 @@
       },
       "note": "Includes actual mounted daily_log_worker.py and daily_log_service.py; image alone does not include these overrides."
     }
-  }
+  },
+  "configuration_files": {
+    "clickhouse/backup-disk.xml": "ecf3efd265105bff68ee400364c073f53e256da913b9255d418f7e253ee284b1"
+  },
+  "configuration_observed_at": "2026-10-09T09:51:45.961488+00:00"
 }

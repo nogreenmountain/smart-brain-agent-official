@@ -11,4 +11,12 @@
     <allowed_disk>backups</allowed_disk>
     <allowed_path>/var/lib/clickhouse/backups/</allowed_path>
   </backups>
+
+  <background_pool_size>2</background_pool_size>
+  <background_merges_mutations_concurrency_ratio>1</background_merges_mutations_concurrency_ratio>
+  <merge_tree>
+    <number_of_free_entries_in_pool_to_execute_mutation>1</number_of_free_entries_in_pool_to_execute_mutation>
+    <number_of_free_entries_in_pool_to_lower_max_size_of_merge>1</number_of_free_entries_in_pool_to_lower_max_size_of_merge>
+    <number_of_free_entries_in_pool_to_execute_optimize_entire_partition>1</number_of_free_entries_in_pool_to_execute_optimize_entire_partition>
+  </merge_tree>
 </clickhouse>

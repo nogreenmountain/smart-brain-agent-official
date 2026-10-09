@@ -82,6 +82,22 @@ def test_runtime_source_manifest_is_complete():
     assert v.check_sources(ROOT) == []
 
 
+def test_runtime_manifest_rejects_changed_deployment_configuration(tmp_path):
+    import hashlib
+    here = tmp_path / 'deploy/current'
+    (here / 'clickhouse').mkdir(parents=True)
+    config = here / 'clickhouse/backup-disk.xml'
+    config.write_bytes(b'old-resource-budget')
+    (here / 'runtime-source-manifest.json').write_text(json.dumps({
+        'components': {}, 'configuration_files': {
+            'clickhouse/backup-disk.xml': hashlib.sha256(b'current-resource-budget').hexdigest()
+        }
+    }))
+    assert v.check_sources(tmp_path) == ['deployment configuration changed: clickhouse/backup-disk.xml']
+    config.write_bytes(b'current-resource-budget')
+    assert v.check_sources(tmp_path) == []
+
+
 def test_receipt_requires_restore_validation_even_if_files_exist(tmp_path):
     p = tmp_path / 'restoration.json'
     p.write_text(json.dumps({'mode': 'restore', 'verified': False, 'postgres': True, 'clickhouse': True}))
