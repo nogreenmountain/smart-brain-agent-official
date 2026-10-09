@@ -138,3 +138,5 @@ Windows9000上游/v1/messages出现新连续限流类别：完整采样区间内
 最近MemAvailable8421343232字节/本轮最小8042278912字节；22:29→22:59换入262页/换出0/OOM0，memory PSI avg10/60/300均0，IO avg300 some0.22/full0.21。即时空闲Docker43091427328（40.13GiB）/cold272051658752（253.37GiB）/runtime34281275392/backup554074771456字节，储备仍薄；backup inactive/success/PID0/Job空，timer原次日02:58:03，Windows9000/PID24744保持。本轮无生产处置/主动模型/测试重放，原collector/heartbeat继续至08:30；证据cycle-20261009T1500.json及六份本轮只读证据保留，任务镜像E盘。CURRENT无新阶段变化，official交付仍2f783d33/干净，例行记录仅本地/E，早间或重要变化再push。整夜/30真实成员容量/完整PG与全writer冻结恢复仍未验。
 
 23:07:20后继记录：上述CURRENT不更新决定已由本条覆盖；为关闭22:30两个尾段限流未覆盖状态，以及明确新增自然流量/三次供应商过载关联，已将23:01核对结论追加CURRENT。本阶段只同步CURRENT与本任务两份文档至official分支，不改生产或main。cold按实际272051658752字节折合253.37GiB。
+
+23:09:03文档收尾：本阶段仅CURRENT/本任务两文档提交fa10875a3bc5ed964eef0062801e0b518a669fd3并push official/codex/overnight-operations-20261009，远端SHA读回一致、交付工作树干净、main未改；三处CURRENT字节一致。此实际push补充仅权威/E盘，证据docs-stage-20261009T1500.json；原collector/heartbeat、02:58计划备份与08:30截止继续。
