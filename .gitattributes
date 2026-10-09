@@ -4,4 +4,4 @@ deploy/current/**/*.conf text eol=lf
 deploy/current/**/*.yaml text eol=lf
 deploy/current/**/*.json text eol=lf
 deploy/current/**/*.py text eol=lf
-deploy/current/runtime-sources/** -text
+deploy/current/runtime-sources/** -text whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab,cr-at-eol
