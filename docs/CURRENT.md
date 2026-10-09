@@ -10,6 +10,8 @@
 
 19:05：两个完整后继5分钟窗口均0 Code241，累计仍7705/最后18:49:57；metric parts21/无当前merge，cgroup max自19:01保持3492、5秒节流0/50及0 OOM。23采样无缺口/采集错误；再度核对1025容器配置代际、23业务对象和原metric UUID/新XML、8公网/个人/edge/backup20通过。两窗口效果门槛通过，长期和真实多人容量仍未验；Docker40.18GiB/cold253.31GiB仍需观察，夜间授权/原collector/备份计划保持。
 
+20:00后继：19:29–19:59新增25个自然gpt-6-sol请求200/完成标记及用量标记已保存，最长140秒；1个502与19:45:18 Windows上游server_is_overloaded/capacity逐秒及耗时对应，未知用量/不完整保持。无新网关超时/连接/落库错误，CH仍7705/最后18:49:57、cgroup max3492未增。34样本无缺口/新OOM/采集错误，容器/业务元数据/公网/个人/edge/备份身份保持；Docker40.16GiB/cold253.46GiB仍薄。此次是自然流量聚合核对，不是主动模型批次或30人容量验收；夜间巡检继续。
+
 ## 2026-10-09 17:57夜间ClickHouse限并行已发布（内存问题仍待）
 
 核对时间：2026-10-09 17:51/17:57（Asia/Shanghai）。[实际发布](releases/overnight-clickhouse-20261009-r1.md)／[具体自审](plans/2026-10-09-overnight-clickhouse.md)：CH原CIDf0a0f6eb/imagecd450891仅配置改pool2/ratio1及三个阈值1，SHAecf3efd2；原单文件bind inode保持，17:49:40Z精确CH短停启动一次。双锁/备份20登记/四盘门槛通过，隔离同版本20000行及restart读回通过；1022无关完整容器配置代际保持、39运行、4原业务表元数据行数/8公网入口/个人/edge通过，无DDL或主动模型。

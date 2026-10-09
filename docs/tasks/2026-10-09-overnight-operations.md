@@ -76,3 +76,11 @@
 CH metric active parts21/text_log16，当前无活动合并；跟踪内存267346197字节、cgroup约2.60GB（不同口径，不能相减当精确缓存数）。19:01→19:05 memory.events.max均3492，5秒CPU节流0/50、无OOM/oom_kill；18:43→19:01的历史增量时刻仍未定位，不把整段当零压力。MemAvailable最近8362524672字节、SwapFree291627008字节，未见新增host OOM。空间Docker43143774208（40.18GiB）/cold271992659968（253.31GiB）/runtime34295930880/backup554074771456字节，仍薄储备，不继续大测试/归档。
 
 个人完成仍35×200/1×499/3×502，18:00之后无自然完成；最近窗口0排队/DB0、PG14 idle/1诊断active/无idle-in-transaction，日志超时/连接/落库失败0；Windows脱敏事件无新增。timer仍次日02:58:03，backup inactive/success/PID0/Job空，仅观察原计划。此次已满足两窗口效果验证，整夜与30真实成员容量仍待；继续原有限observer/heartbeat。
+
+19:30例行核对：observer原r2/Invocation/PID/SHA保持，28样本/最新19:29:48，无>450秒缺口/采集错误/host OOM。CH累计Code241仍7705/最后18:49:57，窗口0，metric parts19/text_log20，cgroup max仍3492/0 OOM，5秒节流0/49。1025容器配置和代际、23业务对象/原metric UUID/实际XMLe14fd07b、8公网/个人current/edge/backup20再度只读核对通过。
+
+Docker43133288448（40.17GiB）/cold272098820096（253.41GiB）/runtime34295361536/backup554074771456字节，仍薄储备；MemAvailable最近8407027712字节。19:04→19:29新增换入131页/换出0/OOM0，memory PSI avg10/60/300均0，IO avg300 some0.13/full0.12。个人仍35/1/3，19:29采样0执行/19:30即时1执行、排队0/DB0，没有新完成请求或窗口错误；Windows9000/PID24744与脱敏事件保持。backup inactive/success/PID0/Job空、timer原02:58:03、无maintenance.pending。本轮无生产处置；证据observation-20261009T113043Z.json、ch-metric-buffer-r2-verified.json、ch-pressure-20261009T113043.json与cycle-20261009T1130.json保留，继续原有限巡检。
+
+20:00续跑：observer原r2/Invocation/PID/SHA保持，34样本/最新19:59:48、无缺口/采集错误/host OOM。累计个人60×200/1×499/4×502；恢复自然流量，19:29–19:59新增gpt-6-sol 25×200，最长140030ms，content_complete/usage_missing聚合分别全部完整/无未知；另1×502、不完整/未知保持，19:45:18的24453ms与Windows同秒上游24419ms、HTTP200内failed/server_is_overloaded/capacity对应，耗时差34ms。没有主动模型测试、人工重试/切模型；不是网关旧120秒超时或CH短停。仅聚合只读SQL、statement5s/lock2s，未输出员工正文。
+
+CH仍Code2417705/最后18:49:57，最近窗口0、metric parts18/text_log16、cgroup max3492不增/0 OOM，5秒节流0/49。1025容器配置代际、23业务对象/原metric UUID/XMLe14fd07b、8公网/个人current/edge/backup20独立核对通过。最近gateway0执行/即时1执行、排队0/DB0，PG14 idle/1诊断active、无idle-in-transaction，窗口连接/超时/落库失败0。Docker43121872896（40.16GiB）/cold272150245376（253.46GiB）/runtime34294558720/backup554074771456字节；MemAvailable8028725248。backup inactive/success/PID0/Job空、timer原02:58:03保持，原Windows9000/PID24744；无本轮生产变更。证据observation-20261009T120047Z.json、natural-traffic-20261009T120204.json、ch-pressure-20261009T120047.json、cycle-20261009T1200.json及远端独立复核保留。
