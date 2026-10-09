@@ -84,3 +84,44 @@ Docker43133288448（40.17GiB）/cold272098820096（253.41GiB）/runtime342953615
 20:00续跑：observer原r2/Invocation/PID/SHA保持，34样本/最新19:59:48、无缺口/采集错误/host OOM。累计个人60×200/1×499/4×502；恢复自然流量，19:29–19:59新增gpt-6-sol 25×200，最长140030ms，content_complete/usage_missing聚合分别全部完整/无未知；另1×502、不完整/未知保持，19:45:18的24453ms与Windows同秒上游24419ms、HTTP200内failed/server_is_overloaded/capacity对应，耗时差34ms。没有主动模型测试、人工重试/切模型；不是网关旧120秒超时或CH短停。仅聚合只读SQL、statement5s/lock2s，未输出员工正文。
 
 CH仍Code2417705/最后18:49:57，最近窗口0、metric parts18/text_log16、cgroup max3492不增/0 OOM，5秒节流0/49。1025容器配置代际、23业务对象/原metric UUID/XMLe14fd07b、8公网/个人current/edge/backup20独立核对通过。最近gateway0执行/即时1执行、排队0/DB0，PG14 idle/1诊断active、无idle-in-transaction，窗口连接/超时/落库失败0。Docker43121872896（40.16GiB）/cold272150245376（253.46GiB）/runtime34294558720/backup554074771456字节；MemAvailable8028725248。backup inactive/success/PID0/Job空、timer原02:58:03保持，原Windows9000/PID24744；无本轮生产变更。证据observation-20261009T120047Z.json、natural-traffic-20261009T120204.json、ch-pressure-20261009T120047.json、cycle-20261009T1200.json及远端独立复核保留。
+
+
+20:30例行核对（实际20:33–20:35）：observer原r2/Invocation95565b7d/PID872681/SHA保持，40样本、最新20:29:48，无>450秒缺口/采集错误/host OOM；证据约10.34MB，原到期08:30保持。20:00–20:29新增自然gpt-6-sol 15×200，最长67972ms，完成标记/已知用量标记全部保存；另2×502/不完整/用量未知，累计75×200/1×499/6×502。20:06:37的35118ms与Windows同秒capacity/server_is_overloaded35108ms对应（差10ms），20:08:37的35499ms与同秒35463ms对应（差36ms）。上游HTTP200内部failed，与网关旧120秒截断或连接故障无对应证据；未主动调用模型、重试或切换模型。
+
+CH直接累计Code241仍7705/最后18:49:57，最近窗口内部错误0，metric parts约21–22/text_log20，当前无活动merge；原CID/image/17:49启动/PID930830及XML e14fd07b、metric UUID保持。cgroup max仍3492/0 OOM/oom_kill，5秒CPU节流0/50。1025容器完整配置及启动代际、23业务对象结构/UUID/元数据行数、8公网200/匿名401、个人current精确绑定/8执行24等待DB3、edge双视图及backup20独立只读核对通过。最近与即时网关均0执行/排队0/DB0，PG14 idle/1诊断active、无idle-in-transaction，最近窗口超时/连接/落库失败0。
+
+20:29样本MemAvailable8448860160字节；19:59→20:29换入687页/换出0/OOM0，memory PSI avg10/60/300均0，IO avg300 some0.14/full0.13，未据此称历史Swap已释放。20:33即时空闲Docker43130281984（40.17GiB）/cold272144814080（253.45GiB）/runtime34293747712/backup554074771456字节，仍薄储备，不新增测试/配置/大归档。backup inactive/success/PID0/Job空、timer原次日02:58:03、无maintenance.pending；Windows9000/PID24744保持。本轮无生产处置；同类别供应商capacity事件继续观察，不盲重启。任务及证据仅本地/E盘更新，CURRENT无新阶段变化、交付分支沿用20:03 b8a46712；早间或重要变化再同步。证据cycle-20261009T1230.json、observation-20261009T123353Z.json、natural-traffic-20261009T123425.json、ch-pressure-20261009T123353.json及本轮不可变独立核验保留；整夜/真实30人容量/完整PG及全writer冻结恢复仍未验。
+
+20:37窗口补核（20:30续跑）：本轮六个完整后继5分钟样本分别20:04/09/14/19/24/29:48，全部入口符合200/401、内部CH错误及个人超时/连接/落库错误0、无采集错误/个人身份漂移/pending；采样峰值执行0/排队0/DB0（仅离散采样峰值，不等于窗口真实峰值），MemAvailable最小8066314240字节。cycle-windows-20261009T1230.json及cycle追加证据，两端任务镜像一致。
+
+
+21:00例行核对（实际21:00–21:02）：observer原r2/Invocation95565b7d/PID872681/SHA保持，46样本、最新20:59:48，无>450秒缺口/采集错误/host OOM，证据约10.57MB。20:29:48–20:59:48六个完整5分钟样本全部入口200/匿名401、内部CH错误及网关超时/连接/落库错误0，个人身份/8执行24等待DB3预算与edge双视图保持，无maintenance.pending。新增自然gpt-6-sol 4×200、最长54379ms，全部完成标记/已知用量标记保存；无新失败或Windows脱敏上游错误，累计79×200/1×499/6×502，不是主动模型测试。
+
+21:01独立核对1025容器完整配置与启动代际、23业务对象结构/UUID/元数据行数、8公网入口/个人current精确绑定/edge/backup20通过。CH仍原CID/image/17:49启动/PID930830、XML e14fd07b与原metric UUID，Code241未清零计数7705/最后18:49:57；metric parts22/text_log19、当前无活动merge，cgroup max3492保持/0 OOM/oom_kill、5秒CPU节流0/49。六样本采样峰值执行0/排队0/DB0（离散采样不代表区间真实峰值），PG14 idle/1诊断active、无idle-in-transaction。
+
+最近MemAvailable8429568000字节/本轮最小8231821312字节；20:29→20:59换入46页/换出0/OOM0，memory PSI avg10/60/300均0，IO avg300 some/full0.11。即时空闲Docker43128659968（40.17GiB）/cold272087273472（253.40GiB）/runtime34292940800/backup554074771456字节，仍薄储备，继续门禁；backup inactive/success/PID0/Job空，timer原次日02:58:03，Windows9000/PID24744保持。本轮无生产变更/测试重放，原collector和heartbeat继续至08:30。证据cycle-20261009T1300.json及五份本轮只读证据保留，任务镜像E盘；CURRENT无新重要阶段变化、交付分支沿用b8a46712，例行记录尚未追加push。整夜/30真实成员容量/完整PG与全writer冻结恢复仍未验。
+
+
+21:30例行核对（现场21:30–21:32）：observer原r2/Invocation95565b7d/PID872681/SHA保持，52样本、最新21:29:48，无>450秒缺口/采集错误/host OOM，证据约10.79MB。20:59:48–21:29:48六个完整5分钟样本均入口200/匿名401、内部CH错误及个人超时/连接/落库错误0、个人身份/current精确绑定/8执行24等待DB3预算及edge双视图保持，无maintenance.pending。聚合SQL同窗没有新增personal_api完成或失败，累计仍79×200/1×499/6×502，无真实模型主动测试。
+
+本机Windows上游21:15:21.964出现一条/v1/messages、HTTP200内upstream_error/type=server_error、reason=unclassified、code为空、63769ms；同窗personal_api无对应记录，调用来源和具体根因未核对，不能归为供应商capacity或个人网关故障，不盲重启/切模型/重试。脱敏字段保存在observation及cycle，未读取或输出正文。
+
+21:32独立核对1025容器完整配置与启动代际、23业务对象结构/UUID/元数据行数、8公网入口/个人current/edge/backup20通过。CH原CID/image/17:49启动/PID930830、XML e14fd07b及原metric UUID保持，Code241累计7705/最后18:49:57未增；metric parts22/text_log20，当前无活动merge；cgroup max3492保持/0 OOM/oom_kill，5秒CPU节流0/50。六样本采样峰值执行0/排队0/DB0（非区间真实峰值），PG采样最大14 idle/1诊断active、idle-in-transaction0。
+
+最近MemAvailable8441925632字节/本轮最小8010706944字节；20:59→21:29换入630页/换出0/OOM0，memory PSI avg10/60/300均0，IO avg300 some/full0.13。即时空闲Docker43116597248（40.16GiB）/cold272027467776（253.35GiB）/runtime34292109312/backup554074771456字节，仍薄储备；backup inactive/success/PID0/Job空，timer原次日02:58:03，Windows9000/PID24744保持。本轮无生产处置/测试重放，继续原collector/heartbeat至08:30。证据cycle-20261009T1330.json及五份本轮只读证据保留，任务镜像E盘；CURRENT无重要阶段变化、交付分支沿用b8a46712，例行记录未追加push。整夜/30真实成员容量/完整PG与全writer冻结恢复仍未验。
+
+
+22:00例行核对（现场22:00–22:02）：observer原r2/Invocation95565b7d/PID872681/SHA保持，58样本、最新21:59:48，无>450秒缺口/采集错误/host OOM，证据约11.02MB。21:29:48–21:59:48六个完整5分钟样本全部入口200/匿名401、内部CH错误及个人超时/连接/落库错误0，current精确绑定/8执行24等待DB3预算/个人身份/edge双视图保持，无maintenance.pending。聚合SQL同窗personal_api无新增完成或失败，累计仍79×200/1×499/6×502；Windows脱敏上游错误无新增，21:15未分类/v1/messages事件归属仍未核对，不补称已确认原因。
+
+22:01独立核对1025容器完整配置与启动代际、23业务对象结构/UUID/元数据行数、8公网入口/个人current/edge/backup20通过。CH原CID/image/17:49启动/PID930830、XML e14fd07b及原metric UUID保持，Code241累计7705/最后18:49:57未增；metric parts22/text_log20，当前无活动merge；cgroup max3492保持/0 OOM/oom_kill，5秒CPU节流0/50。六样本采样峰值执行0/排队0/DB0（非区间真实峰值），PG采样最大14 idle/1诊断active、idle-in-transaction0。
+
+最近MemAvailable8321982464字节/本轮最小8149417984字节；21:29→21:59换入184页/换出0/OOM0，memory PSI avg10/60/300均0，IO avg300 some0.14/full0.13。即时空闲Docker43104952320（40.14GiB）/cold272049827840（253.37GiB）/runtime34291310592/backup554074771456字节，储备仍薄，不新增build/发布/大归档；backup inactive/success/PID0/Job空，timer原次日02:58:03，Windows9000/PID24744保持。本轮无生产处置/主动模型/测试重放，原collector/heartbeat继续至08:30。证据cycle-20261009T1400.json及五份本轮只读证据保留，任务镜像E盘；CURRENT无新重要变化，交付分支沿用b8a46712，例行记录未追加push。整夜/30真实成员容量/完整PG与全writer冻结恢复仍未验。
+
+
+22:30续跑（现场22:31–22:34）：observer原r2/Invocation95565b7d/PID872681/SHA保持，64样本、最新22:29:48，无>450秒缺口/采集错误/host OOM，证据约11.25MB。21:59:48–22:29:48六个完整5分钟样本入口均200/匿名401，个人超时/连接/落库错误0、current精确绑定/8执行24等待DB3预算/个人身份/edge双视图保持，无maintenance.pending。聚合SQL同窗personal_api无新增完成或失败，累计仍79×200/1×499/6×502。
+
+Windows9000上游/v1/messages出现新连续限流类别：完整采样区间内22:25:31一条HTTP200内capacity/service_unavailable_error（40024ms），22:28:28/22:29:05/22:29:43三条HTTP429、kind=rate_limit/type=rate_limit_error（38752/36580/36436ms）；同窗无personal_api对应完成或失败。采样截止后22:30:21/22:31:01另两条429（36493/36717ms），其后继采样覆盖尚待下轮。调用来源和限额类型未核对，不把所有上游调用归到个人网关，也不自动重试、切模型、修改OAuth或盲重启。脱敏时间/状态/分类/耗时保留，未输出正文。21:15未分类server_error仍保留原结论。
+
+22:32独立核对1025容器完整配置与启动代际、23业务对象结构/UUID/元数据行数、8公网入口/个人current/edge/backup20通过。CH原CID/image/17:49启动/PID930830、XML e14fd07b及原metric UUID保持，Code241累计7705/最后18:49:57未增；metric parts19/text_log19，短暂asynchronous_metric_log两part Horizontal合并progress0.16/跟踪16.5MB，未见新错误；cgroup max3492保持/0 OOM/oom_kill，5秒CPU节流0/50。六样本采样峰值执行0/排队0/DB0（非区间真实峰值），PG采样最大14 idle/1诊断active、idle-in-transaction0。
+
+最近MemAvailable8321134592字节/本轮最小8065159168字节；21:59→22:29换入63页/换出0/OOM0，memory PSI avg10/60/300均0，IO avg300 some0.14/full0.13。即时空闲Docker43093344256（40.13GiB）/cold272092278784（253.41GiB）/runtime34282086400/backup554074771456字节，储备仍薄，不新增build/发布/大归档；backup inactive/success/PID0/Job空，timer原次日02:58:03，Windows9000/PID24744保持。本轮无生产处置/主动模型/测试重放，继续原collector/heartbeat至08:30。证据cycle-20261009T1430.json及五份本轮只读证据保留，任务镜像E盘；新上游限流类别追加CURRENT并准备仅本任务文档同步official分支，不整体提交dirty树。整夜/30真实成员容量/完整PG与全writer冻结恢复仍未验。
