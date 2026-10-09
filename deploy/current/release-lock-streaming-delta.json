@@ -1,0 +1,30 @@
+{
+  "release": "personal-api-streaming-20261009-r2",
+  "observed_at": "2026-10-09T08:40:06.548649+00:00",
+  "platform": "linux/amd64",
+  "services": {
+    "personal-key-api-r1": {
+      "image_id": "sha256:6c9a5779643b6b6ee33f2df06a7cef7c2c15d5f688f31ac8a6bb8fd65065ae99",
+      "platform": "linux/amd64",
+      "observed_reference": "sha256:6c9a5779643b6b6ee33f2df06a7cef7c2c15d5f688f31ac8a6bb8fd65065ae99",
+      "size_bytes": 194381800,
+      "repo_digests": [
+        "smartbrain/personal-key-api@sha256:6c9a5779643b6b6ee33f2df06a7cef7c2c15d5f688f31ac8a6bb8fd65065ae99"
+      ],
+      "profiles": [],
+      "required_env": [
+        "ANTHROPIC_AUTH_TOKEN",
+        "AUTH_COOKIE_SECRET",
+        "CLICKHOUSE_PASSWORD",
+        "JWT_SECRET_KEY",
+        "SB_GATEWAY_ALLOWED_USER_IDS",
+        "SB_GATEWAY_TRUSTED_INSTANCES",
+        "SUPABASE_JWT_SECRET",
+        "SUPABASE_KEY",
+        "SUPABASE_PASSWORD",
+        "WIKI_MCP_TOKEN_SECRET",
+        "WORKDAY_COLLECTOR_ENDPOINT"
+      ]
+    }
+  }
+}

@@ -87,7 +87,7 @@
     },
     "personal-key-api-r1": {
       "restart": "unless-stopped",
-      "stop_grace_period": "210s",
+      "stop_grace_period": "1830s",
       "logging": {
         "driver": "json-file",
         "options": {
@@ -108,7 +108,7 @@
         "/tmp:rw,noexec,nosuid,nodev,size=128m,uid=${APP_UID:-10001},gid=${APP_GID:-10001},mode=1777",
         "/var/lib/agentops/tmp:rw,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0750"
       ],
-      "image": "sha256:08f24c57fdb61d198eca4c2033ef0d6b125d506ad1df8fcc7bc4cb64acb19d9f",
+      "image": "sha256:6c9a5779643b6b6ee33f2df06a7cef7c2c15d5f688f31ac8a6bb8fd65065ae99",
       "mem_limit": "${API_MEM_LIMIT:-3g}",
       "cpus": "${API_CPUS:-3.0}",
       "command": [

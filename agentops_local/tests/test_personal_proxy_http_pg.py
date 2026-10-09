@@ -10,6 +10,7 @@ import httpx
 import pytest
 import uvicorn
 from fastapi import FastAPI, Request
+from starlette.responses import StreamingResponse
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
@@ -90,6 +91,12 @@ def test_real_http_pg_staircase_scope_and_queue(monkeypatch):
             try:
                 await gate.wait()
                 await asyncio.sleep(.02)
+                if (await request.json()).get('stream'):
+                    async def chunks():
+                        yield b'data: {"type":"response.output_text.delta","delta":"synthetic"}\n\n'
+                        await asyncio.sleep(.12)
+                        yield b'data: {"type":"response.completed","response":{"model":"fixture","output_text":"synthetic result","usage":{"input_tokens":2,"output_tokens":1}}}\n\n'
+                    return StreamingResponse(chunks(),media_type='text/event-stream')
                 return {'model':'fixture', 'output_text':'简短合成结果', 'usage':{'input_tokens':2,'output_tokens':1}}
             finally:
                 active -= 1
@@ -196,11 +203,29 @@ def test_real_http_pg_staircase_scope_and_queue(monkeypatch):
                 monkeypatch.setattr(proxy, 'UPSTREAM_TIMEOUT_SECONDS', .05)
                 gate.clear()
                 failed=await send()
+                gate.set()
                 assert failed.status_code==502 and runtime.admission.active==0
                 with setup_engine.connect() as conn:
                     assert conn.execute(text('SELECT count(*) FROM public.ai_gateway_events WHERE status_code=502 AND usage_missing')).scalar_one()==1
+                    assert not conn.execute(text('SELECT content_complete FROM public.ai_gateway_events WHERE status_code=502')).scalar_one(), 'failed response marked complete in ledger'
                 gate.set()
                 await asyncio.sleep(.05)
+                monkeypatch.setattr(proxy,'UPSTREAM_TIMEOUT_SECONDS',.5)
+                async with client.stream('POST','/v1/responses',headers={'authorization':'Bearer synthetic-'+str(UID),'x-smartbrain-project-id':PID},json={'model':'fixture','input':'synthetic prompt','stream':True}) as response:
+                    assert response.status_code==200
+                    chunks=response.aiter_bytes()
+                    first=await anext(chunks)
+                    assert b'response.output_text.delta' in first
+                    assert runtime.admission.active==1 and engine.pool.checkedout()==0
+                    assert b'response.completed' in b''.join([chunk async for chunk in chunks])
+                for _ in range(200):
+                    if runtime.admission.active==0 and runtime.db_limiter.borrowed_tokens==0:break
+                    await asyncio.sleep(.005)
+                with setup_engine.connect() as conn:
+                    streamed=conn.execute(text('SELECT e.status_code,e.total_tokens,e.content_complete,e.user_id::text,s.project_id::text FROM public.ai_gateway_events e JOIN public.ai_chat_sessions s ON s.id=e.chat_session_id ORDER BY e.started_at DESC LIMIT 1')).mappings().one()
+                    assert streamed=={'status_code':200,'total_tokens':3,'content_complete':True,'user_id':str(UID),'project_id':PID}
+                    assert conn.execute(text('SELECT count(*) FROM public.ai_gateway_events WHERE status_code=200')).scalar_one()==68
+                assert runtime.admission.active==runtime.ingress.active==0 and engine.pool.checkedout()==0
                 print(json.dumps({'staircase':results,'model_peak':peak,'scope_auth':'real PG hash/account/membership','saved_successes':67,'real_model_requests':0}))
     try:
         asyncio.run(scenario())

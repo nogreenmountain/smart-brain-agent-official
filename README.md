@@ -4,6 +4,7 @@
 
 | 分支 | 用途 |
 |---|---|
+| [codex/personal-api-streaming-20261009](https://github.com/nogreenmountain/smart-brain-agent-official/tree/codex/personal-api-streaming-20261009) | 最新个人API流式与超时修复；当前固定镜像及基线＋增量部署步骤 |
 | [codex/current-source-20261009](https://github.com/nogreenmountain/smart-brain-agent-official/tree/codex/current-source-20261009) | 当前修复源码、测试和七组实际运行模块 |
 | [codex/reproducible-deployment-20261009](https://github.com/nogreenmountain/smart-brain-agent-official/tree/codex/reproducible-deployment-20261009) | 在源码分支上增加固定镜像部署、检查工具和AI操作步骤 |
 
@@ -13,4 +14,4 @@
 
 [当前状态](docs/CURRENT.md) · [交付验收与限制](docs/releases/reproducible-repository-20261009.md) · [源码构建](docs/deployment/SOURCE-BUILD.md)
 
-本轮保存源码/部署分支和受控镜像配置包，没有部署到新主机或重启生产。Git不包含真实Env、数据库数据、员工正文或OAuth登录态。
+本分支个人API流式修复已于16:39上线，真实10分28秒请求成功完成；详细证据与上游过载边界见[发布记录](docs/releases/personal-api-streaming-20261009-r2.md)。尚未部署到全新主机。Git不包含真实Env、数据库数据、员工正文或OAuth登录态。

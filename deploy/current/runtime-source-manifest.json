@@ -1,5 +1,5 @@
 {
-  "observed_at": "2026-10-09T05:30:54.370418+00:00",
+  "observed_at": "2026-10-09T08:40:06.548649+00:00",
   "mode": "deployed module snapshots, not credentials or data",
   "components": {
     "api": {
@@ -208,7 +208,7 @@
       }
     },
     "personal-api": {
-      "image_id": "sha256:08f24c57fdb61d198eca4c2033ef0d6b125d506ad1df8fcc7bc4cb64acb19d9f",
+      "image_id": "sha256:6c9a5779643b6b6ee33f2df06a7cef7c2c15d5f688f31ac8a6bb8fd65065ae99",
       "python_sources": {
         "create_users.py": "2c63a7f3300943eeacadc54b8710f364c349db23eb53fa6e42ae6b1df96a3fd4",
         "ingest_queue.py": "e4957bbd0e45eca47f19442574ee75f142e29d5dddaf92da003e8449f4ba130c",
@@ -332,7 +332,7 @@
         "api/event_handlers.py": "0c9e0d35fa869e37511c9bb28a5c1da67ad8a13ee0c797a57c4ee799c135b874",
         "api/personal_gateway_scope.py": "c438c04bdd382ad55baff133150dd3e8ad251c286bcd61a1e394bca15d916531",
         "api/gateway_admission.py": "24ecdaabea7334989234f387d885f64809e1a9aa14ae9bc771719ddf07dfd978",
-        "api/personal_gateway_proxy.py": "9215042e14cc7de2a17fa2c46f6567bf27b543a9dbcabded83f2b553ed2d3f79",
+        "api/personal_gateway_proxy.py": "9f7ed873617b421e555b64778bf223a4b205c7ccf5b4435b2eecfabbcac90ed3",
         "api/personal_gateway_app.py": "50ea018b7fee72be40ee29efabefaa4de46262543ce473a3bc89ff5b5a21b7ff",
         "public/routes.py": "0301529c9f01fbcc22eae99987d60defebe4081f7353c219d3bcabe4edfa02fd",
         "public/__int__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -412,7 +412,7 @@
         "api/routes/v4/projects.py": "1bcaccc1c698a334f61ff274cd7437d1e32a73519e22c6b87a822b387582d554",
         "api/routes/v4/audit_admin.py": "ca09b5edcccd2b01b4f84bade6c7c0508e447feae21565f40bbbe9077014c8c0",
         "api/routes/v4/knowledge.py": "e9c55dd3409fe01aaa76892b41e3f963ecda55f9306fc8c1a72482eb999570fc",
-        "api/routes/v4/ai_gateway.py": "e62881703540e23220f9a7158bfc8302a9662fe76c5d4a7dcda080b815c87d3a",
+        "api/routes/v4/ai_gateway.py": "2db168c87aa7e0a8dcb1dfb5b8bd37d15de84cd9a1e42cb617811b86b6badd76",
         "api/routes/v4/project_agents.py": "b08fd42f50996bf06d43eb38e8bc01d91e9f400edd7f48662d2c28f5bbe42858",
         "api/routes/v4/traces/responses.py": "7284e8756d4b1fd0f35904cd39b387f6351521889bb988e66a31c94e87baa423",
         "api/routes/v4/traces/__init__.py": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",

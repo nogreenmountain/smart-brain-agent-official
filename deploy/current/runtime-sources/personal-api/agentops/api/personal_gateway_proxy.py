@@ -1,9 +1,8 @@
 """Authenticated OpenAI-compatible proxy for registered personal API keys.
 
 The edge route must terminate here before reaching the model gateway.  This
-module deliberately buffers the upstream response: it keeps JSON and SSE
-wire-compatible while allowing one immutable usage/work-record event to be
-written after the upstream call completes.
+module forwards streaming requests as data arrives, saving one immutable
+usage/work-record event after the response finishes. JSON stays buffered.
 """
 from __future__ import annotations
 
@@ -14,6 +13,7 @@ import os
 import time
 import uuid
 from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -23,6 +23,7 @@ from typing import Any
 import httpx
 import anyio
 from fastapi import HTTPException, Request, Response
+from starlette.responses import StreamingResponse
 from sqlalchemy import text
 
 from agentops.api.routes.v4.ai_gateway import (
@@ -42,6 +43,8 @@ from agentops.rag.authz import AuthzError, require_member
 logger = logging.getLogger(__name__)
 UPSTREAM_BASE_URL = os.getenv("SB_PERSONAL_UPSTREAM_URL", "http://192.168.10.146:9000").rstrip("/")
 UPSTREAM_TIMEOUT_SECONDS = float(os.getenv("SB_PERSONAL_UPSTREAM_TIMEOUT_SECONDS", "120"))
+MAX_STREAM_SECONDS = float(os.getenv('SB_PERSONAL_MAX_STREAM_SECONDS', '1800'))
+MAX_STREAM_RECORD_BYTES = 16 * 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -94,6 +97,8 @@ async def gateway_lifespan(app):
     timeout = float(os.getenv('SB_PERSONAL_QUEUE_TIMEOUT_SECONDS', '60'))
     if not 1 <= active <= 64 or not 0 <= waiting <= 256 or not 0 < timeout <= 600:
         raise ValueError('Invalid personal gateway limits')
+    if not 0 < MAX_STREAM_SECONDS <= 7200 or UPSTREAM_TIMEOUT_SECONDS <= 0:
+        raise ValueError('Invalid personal gateway upstream timeouts')
     async with httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT_SECONDS, follow_redirects=False,
             limits=httpx.Limits(max_connections=active, max_keepalive_connections=active)) as client:
         app.state.personal_gateway_runtime = GatewayRuntime(client=client,
@@ -355,32 +360,47 @@ def _save_event(orm, claim, event):
 async def proxy_request(request: Request) -> Response:
     bearer_token(request.headers)
     runtime = gateway_runtime(request)
+    slots = AsyncExitStack()
+    transferred = False
     try:
-        async with runtime.ingress.slot():
-            # Cap buffered requests before reading or entering the wait queue.
-            parts, size = [], 0
-            async for chunk in request.stream():
-                size += len(chunk)
-                if size > runtime.max_body_bytes:
-                    raise HTTPException(413, 'gateway_request_too_large')
-                parts.append(chunk)
-            body = b''.join(parts)
-            async with runtime.admission.slot(disconnected=request.is_disconnected):
-                if await request.is_disconnected():
-                    raise HTTPException(499, 'gateway_client_disconnected')
-                return await _proxy_admitted(request, runtime, body)
+        await slots.enter_async_context(runtime.ingress.slot())
+        # Cap buffered requests before reading or entering the wait queue.
+        parts, size = [], 0
+        async for chunk in request.stream():
+            size += len(chunk)
+            if size > runtime.max_body_bytes:
+                raise HTTPException(413, 'gateway_request_too_large')
+            parts.append(chunk)
+        body = b''.join(parts)
+        await slots.enter_async_context(runtime.admission.slot(disconnected=request.is_disconnected))
+        if await request.is_disconnected():
+            raise HTTPException(499, 'gateway_client_disconnected')
+        response = await _proxy_admitted(request, runtime, body)
+        if isinstance(response, _GatewayStreamResponse):
+            response.slots = slots.pop_all()
+            transferred = True
+        return response
     except AdmissionRejected as error:
         raise HTTPException(499 if error.reason == 'gateway_client_disconnected' else 503, error.reason,
                             headers={'Retry-After': '3', 'Cache-Control': 'no-store'}) from None
+    finally:
+        if not transferred:
+            await slots.aclose()
 
 
-async def _upstream_request(request, runtime, url, body):
+async def _upstream_request(request, runtime, url, body, *, streaming=False):
     stopped = asyncio.Event()
     async def watch():
         while not stopped.is_set() and not await request.is_disconnected():
             await asyncio.sleep(.05)
-    model = asyncio.create_task(runtime.client.request(request.method, url,
-        content=body, headers=upstream_headers(request.headers), params=request.query_params))
+    if streaming:
+        outgoing = runtime.client.build_request(request.method, url,
+            content=body, headers=upstream_headers(request.headers), params=request.query_params)
+        call = runtime.client.send(outgoing, stream=True)
+    else:
+        call = runtime.client.request(request.method, url,
+            content=body, headers=upstream_headers(request.headers), params=request.query_params)
+    model = asyncio.create_task(call)
     disconnect = asyncio.create_task(watch())
     try:
         async with asyncio.timeout(UPSTREAM_TIMEOUT_SECONDS):
@@ -399,6 +419,113 @@ async def _upstream_request(request, runtime, url, body):
         await asyncio.gather(model, disconnect, return_exceptions=True)
 
 
+def _sse_outcome(body):
+    """Require a protocol terminal; upstream failure events override HTTP 200."""
+    complete, failed = False, False
+    for line in body.decode('utf-8', errors='replace').splitlines():
+        if not line.startswith('data:'):
+            continue
+        raw = line[5:].strip()
+        if raw == '[DONE]':
+            complete = True
+            continue
+        try:
+            value = json.loads(raw)
+        except (ValueError, TypeError):
+            continue
+        if not isinstance(value, dict):
+            continue
+        kind = value.get('type')
+        response = value.get('response')
+        if kind in {'response.failed','response.incomplete','error'} or value.get('error'):
+            failed = True
+        if isinstance(response, dict) and response.get('status') in {'failed','incomplete'}:
+            failed = True
+        if kind in {'response.completed','message_stop'}:
+            complete = True
+        if isinstance(value.get('choices'), list) and any(
+                isinstance(c, dict) and c.get('finish_reason') is not None for c in value['choices']):
+            complete = True
+    return 'failed' if failed else 'complete' if complete else 'missing'
+
+
+class _GatewayStreamResponse(StreamingResponse):
+    """Own upstream and concurrency slots until sending and accounting finish."""
+    def __init__(self, upstream, runtime, claim, payload, project_id, started_at, started_clock):
+        self.upstream, self.runtime, self.claim = upstream, runtime, claim
+        self.payload, self.project_id = payload, project_id
+        self.started_at, self.started_clock = started_at, started_clock
+        self.slots = None
+        self.captured = bytearray()
+        self.capture_overflow = False
+        self.finished = False
+        self.protocol_failed = False
+        self.failure_status = 499
+        self.failure_reason = 'gateway_client_disconnected'
+        headers = _response_headers(upstream.headers)
+        headers['x-smartbrain-gateway-authenticated'] = 'true'
+        # aiter_bytes decodes compression; never advertise the upstream encoding.
+        headers = {k:v for k,v in headers.items() if k.lower() != 'content-encoding'}
+        headers['x-accel-buffering'] = 'no'
+        super().__init__(self._chunks(), status_code=upstream.status_code, headers=headers)
+
+    async def _chunks(self):
+        try:
+            async with asyncio.timeout(MAX_STREAM_SECONDS):
+                source = self.upstream.aiter_bytes()
+                while True:
+                    try:
+                        chunk = await asyncio.wait_for(anext(source), UPSTREAM_TIMEOUT_SECONDS)
+                    except StopAsyncIteration:
+                        if 'text/event-stream' in self.upstream.headers.get('content-type','') and not self.capture_overflow:
+                            outcome = _sse_outcome(self.captured)
+                            if outcome == 'missing' and self.upstream.status_code < 400:
+                                raise httpx.RemoteProtocolError('Upstream SSE ended without terminal event')
+                            self.protocol_failed = outcome == 'failed'
+                        self.finished = True
+                        break
+                    if len(self.captured) + len(chunk) <= MAX_STREAM_RECORD_BYTES and not self.capture_overflow:
+                        self.captured.extend(chunk)
+                    else:
+                        self.capture_overflow = True
+                    yield chunk
+        except (httpx.HTTPError, TimeoutError) as error:
+            self.failure_status = 502
+            self.failure_reason = ('gateway_stream_timeout' if isinstance(error, (TimeoutError, httpx.TimeoutException))
+                                   else 'gateway_stream_interrupted')
+            logger.warning('Personal API stream unavailable: %s', type(error).__name__)
+            # Headers have already been sent. Terminate with an error; ordinary
+            # EOF would pretend that a partial stream finished successfully.
+            raise
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            with anyio.CancelScope(shield=True):
+                try:
+                    await self.upstream.aclose()
+                    status = (502 if self.protocol_failed else self.upstream.status_code) if self.finished else self.failure_status
+                    event = event_for_response(
+                        body=bytes(self.captured) if self.finished and not self.capture_overflow else b'{}',
+                        request_payload=self.payload,
+                        response_content_type=self.upstream.headers.get('content-type',''),
+                        status_code=status, started_at=self.started_at,
+                        latency_ms=int((time.monotonic()-self.started_clock)*1000), project_id=self.project_id)
+                    event.content_complete = self.finished and not self.capture_overflow and status < 400
+                    if not self.finished:
+                        event.error_message = self.failure_reason
+                    elif self.protocol_failed:
+                        event.error_message = 'gateway_upstream_failed_event'
+                    try:
+                        await self.runtime.database(_save_event, self.claim, event)
+                    except Exception:
+                        logger.exception('Personal API stream event persistence failed')
+                finally:
+                    if self.slots is not None:
+                        await self.slots.aclose()
+
+
 async def _proxy_admitted(request, runtime, request_body):
     try:
         request_payload = json.loads(request_body.decode('utf-8')) if request_body else {}
@@ -414,7 +541,8 @@ async def _proxy_admitted(request, runtime, request_body):
     started_at = datetime.now(timezone.utc)
     started_clock = time.monotonic()
     try:
-        upstream = await _upstream_request(request, runtime, upstream_url, request_body)
+        streaming = request_payload.get('stream') is True
+        upstream = await _upstream_request(request, runtime, upstream_url, request_body, streaming=streaming)
     except (httpx.HTTPError, HTTPException, asyncio.CancelledError) as error:
         cancelled = isinstance(error, asyncio.CancelledError) or (
             isinstance(error, HTTPException) and error.status_code == 499)
@@ -438,6 +566,9 @@ async def _proxy_admitted(request, runtime, request_body):
         if cancelled:
             raise
         raise HTTPException(status_code=502, detail="Personal API upstream unavailable") from error
+
+    if streaming:
+        return _GatewayStreamResponse(upstream, runtime, claim, request_payload, project_id, started_at, started_clock)
 
     event = event_for_response(
         body=upstream.content,

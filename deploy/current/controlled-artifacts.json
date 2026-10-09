@@ -45,5 +45,23 @@
   "database_data_included": false,
   "restoration_verified": false,
   "business_container_config_and_generation_unchanged": 30,
-  "production_service_restarts": 0
+  "production_service_restarts": 0,
+  "streaming_delta": {
+    "at": "2026-10-09T08:43:56.314961+00:00",
+    "image_bundle_root": "/srv/smartbrain-backups/backups/personal-api-streaming-20261009-r2/images",
+    "image_bundle": {
+      "release": "personal-api-streaming-20261009-r2",
+      "created_at": "2026-10-09T08:43:53.737218+00:00",
+      "image_ids": [
+        "sha256:6c9a5779643b6b6ee33f2df06a7cef7c2c15d5f688f31ac8a6bb8fd65065ae99"
+      ],
+      "files": [
+        {
+          "path": "images.tar",
+          "sha256": "52197abae6332c8b06dd72ab82c56ed53ecb22b6494e325203717e5db8cb0ae0",
+          "bytes": 194435072
+        }
+      ]
+    }
+  }
 }

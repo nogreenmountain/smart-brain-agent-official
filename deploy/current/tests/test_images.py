@@ -56,3 +56,16 @@ def test_docker_29_oci_identity_uses_root_index_digest(tmp_path):
         for n, b in blobs.items():
             member = tarfile.TarInfo(n); member.size = len(b); t.addfile(member, io.BytesIO(b))
     assert m.archive_image_ids(p) == {image_ref['digest']}
+
+
+def test_verify_uses_explicit_delta_lock_and_rejects_wrong_images(tmp_path, monkeypatch):
+    root=tmp_path/'bundle';root.mkdir()
+    image=make_tar(root/'images.tar')
+    manifest={'files':[{'path':'images.tar','sha256':hashlib.sha256((root/'images.tar').read_bytes()).hexdigest()}],'image_ids':[image]}
+    (root/'bundle-manifest.json').write_text(json.dumps(manifest))
+    lock=tmp_path/'delta.json'
+    lock.write_text(json.dumps({'release':'fixture-delta','services':{'proxy':{'image_id':image,'size_bytes':1,'platform':'linux/amd64'}}}))
+    monkeypatch.setattr(m.sys,'argv',['images.py','verify','--directory',str(root),'--lock',str(lock)])
+    assert m.main()==0
+    lock.write_text(json.dumps({'services':{'proxy':{'image_id':'sha256:'+'a'*64}}}))
+    assert m.main()==1

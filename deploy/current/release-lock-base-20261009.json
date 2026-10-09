@@ -1,8 +1,8 @@
 {
-  "release": "current-20261009-streaming-r2",
-  "observed_at": "2026-10-09T08:40:06.548649+00:00",
+  "release": "current-20261009",
+  "observed_at": "2026-10-09T05:30:54.370418+00:00",
   "platform": "linux/amd64",
-  "source_branch": "codex/personal-api-streaming-20261009",
+  "source_branch": "codex/current-source-20261009",
   "services": {
     "api": {
       "image_id": "sha256:8eac15848ae9e29080d9deba458d588e572d8b0b1188f8f10dc60040ec41d402",
@@ -26,12 +26,12 @@
       ]
     },
     "personal-key-api-r1": {
-      "image_id": "sha256:6c9a5779643b6b6ee33f2df06a7cef7c2c15d5f688f31ac8a6bb8fd65065ae99",
+      "image_id": "sha256:08f24c57fdb61d198eca4c2033ef0d6b125d506ad1df8fcc7bc4cb64acb19d9f",
       "platform": "linux/amd64",
-      "observed_reference": "sha256:6c9a5779643b6b6ee33f2df06a7cef7c2c15d5f688f31ac8a6bb8fd65065ae99",
-      "size_bytes": 194381800,
+      "observed_reference": "sha256:08f24c57fdb61d198eca4c2033ef0d6b125d506ad1df8fcc7bc4cb64acb19d9f",
+      "size_bytes": 194360353,
       "repo_digests": [
-        "smartbrain/personal-key-api@sha256:6c9a5779643b6b6ee33f2df06a7cef7c2c15d5f688f31ac8a6bb8fd65065ae99"
+        "smartbrain/personal-key-api@sha256:08f24c57fdb61d198eca4c2033ef0d6b125d506ad1df8fcc7bc4cb64acb19d9f"
       ],
       "profiles": [],
       "required_env": [

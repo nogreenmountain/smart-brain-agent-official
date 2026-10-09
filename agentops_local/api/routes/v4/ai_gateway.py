@@ -1110,7 +1110,7 @@ def _ingest_gateway_events(claim: Any, body: GatewayEventBatch, orm: Session):
                     orm, claim=claim, employee_id=employee_id, employee_name=employee_name,
                     event=event, usage=usage,
                 )
-                orm.execute(text("UPDATE public.ai_gateway_events SET chat_session_id=:session_id, content_complete=true, content_sync_status='synced' WHERE id=:id"), {"session_id": str(session_id), "id": str(row.id)})
+                orm.execute(text("UPDATE public.ai_gateway_events SET chat_session_id=:session_id, content_complete=:complete, content_sync_status='synced' WHERE id=:id"), {"session_id": str(session_id), "complete": event.content_complete and 200 <= event.status_code < 400, "id": str(row.id)})
             if event.app_type != 'personal_api' and event.project_id and event.content_complete and event.messages:
                 _materialize_project_conversation_record(
                     orm, claim=claim, employee_id=employee_id, employee_name=employee_name,

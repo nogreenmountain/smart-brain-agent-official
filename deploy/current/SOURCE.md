@@ -2,6 +2,8 @@
 
 核对时间：2026-10-09 13:30–13:45（Asia/Shanghai）。基线 official/main `431022ba5fe5169aa6be97a5e602f5995692ab91`。
 
+后继个人API流式修复于2026-10-09 16:39发布、16:50独立核对，镜像6c9a5779…；本分支只更新personal-api快照两源及当前image/source lock。其余组件仍为13:30快照。42项代理/真实HTTP/隔离PG与130秒流验收、真实627576ms完成见[发布记录](../../docs/releases/personal-api-streaming-20261009-r2.md)。上游模型过载仍可能返回错误。
+
 本分支保存已发布的对话摘要、Company Memory 更新器、无适配器归属、AI 工作台滚动及个人代理并发修复，以及七组实际后端 Python 模块快照。不同服务的历史版本不同，不能只用一个 `agentops_local` 目录代表全部线上组件。
 
 `runtime-source-manifest.json` 记录每个组件的 Image ID 和实际源码 SHA256。`runtime-sources/` 保留原始字节，不包含 Env、业务数据、模型响应或私有配置。worklog-worker 包含实际 bind mount 的两份修复源码；其他 workers 快照来自 material parser，同镜像仍须按服务核对挂载。

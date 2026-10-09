@@ -1,6 +1,6 @@
 # 将当前智慧大脑部署到一台新机器
 
-入口版本：current-20261009，现场核对 2026-10-09 13:30–14:05（北京时间）。先读本文件，再执行命令。当前分支包含源码分支全部内容。
+入口版本：current-20261009-streaming-r2，个人API现场核对 2026-10-09 16:40（北京时间），其他组件沿用13:30–14:05快照。先读本文件，再执行命令。当前分支包含源码与个人API流式修复。
 
 ## 交给 AI 的任务文本
 
@@ -35,6 +35,8 @@ Git 保存代码、配置模板和结构，不保存真实密码、员工正文�
 
 本轮已生成受控包，保存在原服务器：
 
+个人API增量包：`/srv/smartbrain-backups/backups/personal-api-streaming-20261009-r2/images/`。基线包与增量包均须交付；先按base lock导入旧21镜像，再按delta lock导入1个修复镜像，最终current lock校验21个当前镜像。不要只用基线包启动本分支。
+
 `/srv/smartbrain-backups/backups/repository-current-20261009-r1/`
 
 - `images/images.tar` + `images/bundle-manifest.json`：当前 21 镜像，包含全部 30 服务所用版本。
@@ -55,7 +57,7 @@ python3 deploy/current/images.py export --directory /受控备份盘/新的包�
 ## 4. 获取仓库、固定版本
 
 ```bash
-git clone --branch codex/reproducible-deployment-20261009 --single-branch \
+git clone --branch codex/personal-api-streaming-20261009 --single-branch \
   https://github.com/nogreenmountain/smart-brain-agent-official.git /opt/smartbrain-current
 cd /opt/smartbrain-current
 git rev-parse HEAD
@@ -71,8 +73,13 @@ python3 deploy/current/verify.py sources
 ```bash
 cp deploy/current/.env.example /etc/smartbrain-current/deployment.env
 # 编辑外部 deployment.env；不要 source 它，不要在终端输出 Secret。
-python3 deploy/current/images.py verify --directory /受控路径/images
-python3 deploy/current/images.py import --directory /受控路径/images
+# 13:30基线21镜像包使用保留的base lock验证导入。
+python3 deploy/current/images.py verify --directory /受控路径/基线/images --lock deploy/current/release-lock-base-20261009.json
+python3 deploy/current/images.py import --directory /受控路径/基线/images --lock deploy/current/release-lock-base-20261009.json
+# 再导入16:39个人API流式修复的单镜像增量包。
+python3 deploy/current/images.py verify --directory /受控路径/流式修复/images --lock deploy/current/release-lock-streaming-delta.json
+python3 deploy/current/images.py import --directory /受控路径/流式修复/images --lock deploy/current/release-lock-streaming-delta.json
+python3 deploy/current/verify.py images
 python3 deploy/current/verify.py bundle --bundle-root /受控路径/config
 ```
 
