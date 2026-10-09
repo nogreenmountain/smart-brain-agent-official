@@ -1,3 +1,5 @@
+> 2026-10-09：本文件为历史部署参考。当前部署请先读 `docs/deployment/AI-DEPLOY.md`，使用 `deploy/current/`；不启用退休Monitor、适配器或项目Key绑定，不运行旧默认密码seed。
+
 # AgentOps Deployment Infrastructure
 
 Multi-tenant Kubernetes deployment system for CrewAI agents with ALB ingress routing.

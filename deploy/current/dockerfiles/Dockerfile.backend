@@ -1,0 +1,27 @@
+# syntax=docker/dockerfile:1.7
+ARG PYTHON_BASE=python:3.12.11-slim-bookworm@sha256:519591d6871b7bc437060736b9f7456b8731f1499a57e22e6c285135ae657bf7
+FROM ${PYTHON_BASE} AS builder
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 UV_LINK_MODE=copy
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends build-essential git && rm -rf /var/lib/apt/lists/* \
+    && python -m pip install --no-cache-dir uv==0.6.14
+COPY --from=api-src pyproject.toml uv.lock ./
+COPY --from=jockey-src . ./jockey
+COPY --from=runtime-src . ./agentops
+COPY api-extra-requirements.lock ./
+RUN uv sync --frozen --no-dev \
+    && uv pip install --python /app/.venv/bin/python --require-hashes --requirements api-extra-requirements.lock
+ADD --checksum=sha256:223921b76ee99bde995b7ff738513eef100fb51d18c93597a113bcffe865b2a7 \
+    https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken \
+    ./tiktoken-cache/9b5ad71b2ce5302211f9c61530b329a4922fc6a4
+FROM ${PYTHON_BASE}
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TIKTOKEN_CACHE_DIR=/app/tiktoken-cache PATH=/app/.venv/bin:$PATH
+RUN apt-get update && apt-get install -y --no-install-recommends git libgomp1 && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 agentops-runtime \
+    && useradd --uid 10001 --gid 10001 --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin agentops-runtime \
+    && install -d -o 10001 -g 10001 -m 0750 /var/lib/agentops/material-uploads /var/lib/agentops/tmp
+WORKDIR /app
+COPY --from=builder --chown=10001:10001 /app /app
+USER 10001:10001
+EXPOSE 8000
+CMD ["/app/.venv/bin/uvicorn", "agentops.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

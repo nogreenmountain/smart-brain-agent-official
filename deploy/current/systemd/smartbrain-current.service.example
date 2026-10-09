@@ -1,0 +1,19 @@
+[Unit]
+Description=SmartBrain current deployment on a new host
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/smartbrain-current/restoration.json
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/smartbrain-current
+ExecStartPre=/usr/bin/python3 deploy/current/verify.py preflight --config /etc/smartbrain-current/deployment.env --mode restore --profiles rag,workers
+ExecStart=/usr/bin/docker compose --env-file /etc/smartbrain-current/deployment.env -f deploy/current/compose.yaml --profile rag --profile workers up -d --wait --wait-timeout 300
+ExecStop=/usr/bin/docker compose --env-file /etc/smartbrain-current/deployment.env -f deploy/current/compose.yaml --profile rag --profile workers stop --timeout 210
+TimeoutStartSec=600
+TimeoutStopSec=300
+
+[Install]
+WantedBy=multi-user.target

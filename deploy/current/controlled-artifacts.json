@@ -1,0 +1,49 @@
+{
+  "observed_at": "2026-10-09T06:02:29.749036+00:00",
+  "private_server_directory": "/srv/smartbrain-backups/backups/repository-current-20261009-r1",
+  "images": {
+    "release": "current-20261009",
+    "created_at": "2026-10-09T06:01:25.181656+00:00",
+    "image_ids": [
+      "sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952",
+      "sha256:07d02aa4cf1cf61899daacbffdb95cddbcffc60efa1c5e568c7bbac8382e6fcb",
+      "sha256:08f24c57fdb61d198eca4c2033ef0d6b125d506ad1df8fcc7bc4cb64acb19d9f",
+      "sha256:295d3a7244d555ca1c531beee7eb5729423da5d12f7ea6c509d0f48db598bdaa",
+      "sha256:3d18efac5582502e39f36859fd026371f4d5fe46c840ff313daef946e646940c",
+      "sha256:5a6b3b986c5927bab14c41d08d9edc901a9163ef401e252ec32570e43bd1e7d3",
+      "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+      "sha256:74415450172deb1873760fbbc4e824cdcb58eb37783c9a6e6541ff92159fd7fa",
+      "sha256:8eac15848ae9e29080d9deba458d588e572d8b0b1188f8f10dc60040ec41d402",
+      "sha256:985176d5cbf54b6f868a1eef856489fad0be827feac6e0e0a65fc1831838d617",
+      "sha256:99f70365a81f07a59207113cd31f0c17c62694ad0b2dbb92707c5a0f33befd03",
+      "sha256:9d46874b6e124ff48ff1b3d1dbf0913d87cb423ed89fb7e9e54936664e4e5dcc",
+      "sha256:af083ef64d0408c8f098ee6f5c364a59b26f36fbc0f3a334a62c5c1d57362e9b",
+      "sha256:b252efb680be37d4a8bf77c210cf0439c19b63a4b51929233a65dd101d25bdab",
+      "sha256:c0133fdde9a8928cefb7cccff04e69e2155976bec21607cf67572202a87b2afc",
+      "sha256:c8eb9858eafec891a97c27125470aaad54703c3f4eb4d55ca7f1bf6c6411febf",
+      "sha256:cd450891db46cc6ffe313ca2b0fb7dbfb897a6873ca74a724cbe050a2cf62621",
+      "sha256:d1ac2b0ccaf8fec4ad060ce592ad92bf141f8528517dab546998a9d649e1a1dc",
+      "sha256:d2009b5c9deffc210c8a5592698472fede14fd9f6ca89823c8474ca54d58c012",
+      "sha256:f71a20e233a7fb55afc0aa71703bb7176df5e5e66065825afb1d57ac2fb81674",
+      "sha256:ffef99b8d9f4396ba25d9e73b0719af77104820fe6732ad54d96b48d8cbda40d"
+    ],
+    "files": [
+      {
+        "path": "images.tar",
+        "sha256": "180eceb32b890e286d3920eda81121f631d7c2b86d2e08f733a00bec3ec8c4c5",
+        "bytes": 6147032576
+      }
+    ]
+  },
+  "configuration_archive": {
+    "path": "config.private.tar.gz",
+    "sha256": "03f2ca165d9f27c9d5628291ac337b02e2c8ac7d08e832e59e9672668cfc70d6",
+    "bytes": 22305823,
+    "files": 48,
+    "private": true
+  },
+  "database_data_included": false,
+  "restoration_verified": false,
+  "business_container_config_and_generation_unchanged": 30,
+  "production_service_restarts": 0
+}

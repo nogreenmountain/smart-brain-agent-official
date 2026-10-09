@@ -1,3 +1,5 @@
+> 2026-10-09：本文件为历史部署参考。当前部署请先读 `docs/deployment/AI-DEPLOY.md`，使用 `deploy/current/`；不启用退休Monitor、适配器或项目Key绑定，不运行旧默认密码seed。
+
 # SmartBrain 部署 Profile
 
 部署 profile 是“需求 → 服务拓扑”的唯一入口。AI 或人工部署时必须先选择 profile，再执行 preflight；不得通过猜目录或临时拼接 Compose 命令决定服务。

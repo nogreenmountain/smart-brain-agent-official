@@ -1,3 +1,5 @@
+> 2026-10-09：本文件为历史部署参考。当前部署请先读 `docs/deployment/AI-DEPLOY.md`，使用 `deploy/current/`；不启用退休Monitor、适配器或项目Key绑定，不运行旧默认密码seed。
+
 # AI 部署 Runbook
 
 本 Runbook 用于另一台电脑上的 AI 或人工执行部署。它描述检查顺序，不包含任何真实密钥、Cookie、数据库密码或用户正文。

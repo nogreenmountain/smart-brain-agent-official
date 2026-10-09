@@ -1,0 +1,536 @@
+{
+  "release": "current-20261009",
+  "observed_at": "2026-10-09T05:30:54.370418+00:00",
+  "platform": "linux/amd64",
+  "source_branch": "codex/current-source-20261009",
+  "services": {
+    "api": {
+      "image_id": "sha256:8eac15848ae9e29080d9deba458d588e572d8b0b1188f8f10dc60040ec41d402",
+      "platform": "linux/amd64",
+      "observed_reference": "sha256:8eac15848ae9e29080d9deba458d588e572d8b0b1188f8f10dc60040ec41d402",
+      "size_bytes": 192689562,
+      "repo_digests": [
+        "smartbrain-conversation-summary-api@sha256:8eac15848ae9e29080d9deba458d588e572d8b0b1188f8f10dc60040ec41d402"
+      ],
+      "profiles": [],
+      "required_env": [
+        "ANTHROPIC_AUTH_TOKEN",
+        "AUTH_COOKIE_SECRET",
+        "CLICKHOUSE_PASSWORD",
+        "JWT_SECRET_KEY",
+        "SUPABASE_JWT_SECRET",
+        "SUPABASE_KEY",
+        "SUPABASE_PASSWORD",
+        "WIKI_MCP_TOKEN_SECRET",
+        "WORKDAY_COLLECTOR_ENDPOINT"
+      ]
+    },
+    "personal-key-api-r1": {
+      "image_id": "sha256:08f24c57fdb61d198eca4c2033ef0d6b125d506ad1df8fcc7bc4cb64acb19d9f",
+      "platform": "linux/amd64",
+      "observed_reference": "sha256:08f24c57fdb61d198eca4c2033ef0d6b125d506ad1df8fcc7bc4cb64acb19d9f",
+      "size_bytes": 194360353,
+      "repo_digests": [
+        "smartbrain/personal-key-api@sha256:08f24c57fdb61d198eca4c2033ef0d6b125d506ad1df8fcc7bc4cb64acb19d9f"
+      ],
+      "profiles": [],
+      "required_env": [
+        "ANTHROPIC_AUTH_TOKEN",
+        "AUTH_COOKIE_SECRET",
+        "CLICKHOUSE_PASSWORD",
+        "JWT_SECRET_KEY",
+        "SB_GATEWAY_ALLOWED_USER_IDS",
+        "SB_GATEWAY_TRUSTED_INSTANCES",
+        "SUPABASE_JWT_SECRET",
+        "SUPABASE_KEY",
+        "SUPABASE_PASSWORD",
+        "WIKI_MCP_TOKEN_SECRET",
+        "WORKDAY_COLLECTOR_ENDPOINT"
+      ]
+    },
+    "workday-gateway-read": {
+      "image_id": "sha256:985176d5cbf54b6f868a1eef856489fad0be827feac6e0e0a65fc1831838d617",
+      "platform": "linux/amd64",
+      "observed_reference": "smartbrain-scroll-read:2026.10.08-r2",
+      "size_bytes": 194327597,
+      "repo_digests": [
+        "smartbrain-scroll-read@sha256:985176d5cbf54b6f868a1eef856489fad0be827feac6e0e0a65fc1831838d617"
+      ],
+      "profiles": [],
+      "required_env": [
+        "ANTHROPIC_AUTH_TOKEN",
+        "AUTH_COOKIE_SECRET",
+        "CLICKHOUSE_PASSWORD",
+        "JWT_SECRET_KEY",
+        "SB_GATEWAY_ALLOWED_USER_IDS",
+        "SB_GATEWAY_TRUSTED_INSTANCES",
+        "SUPABASE_JWT_SECRET",
+        "SUPABASE_KEY",
+        "SUPABASE_PASSWORD",
+        "WIKI_MCP_TOKEN_SECRET",
+        "WORKDAY_COLLECTOR_ENDPOINT"
+      ]
+    },
+    "collaboration-api": {
+      "image_id": "sha256:c0133fdde9a8928cefb7cccff04e69e2155976bec21607cf67572202a87b2afc",
+      "platform": "linux/amd64",
+      "observed_reference": "sha256:c0133fdde9a8928cefb7cccff04e69e2155976bec21607cf67572202a87b2afc",
+      "size_bytes": 194059774,
+      "repo_digests": [
+        "smartbrain-collaboration-api-20260911-r2@sha256:c0133fdde9a8928cefb7cccff04e69e2155976bec21607cf67572202a87b2afc"
+      ],
+      "profiles": [],
+      "required_env": [
+        "ANTHROPIC_AUTH_TOKEN",
+        "AUTH_COOKIE_SECRET",
+        "CLICKHOUSE_PASSWORD",
+        "JWT_SECRET_KEY",
+        "SB_GATEWAY_ALLOWED_USER_IDS",
+        "SB_GATEWAY_TRUSTED_INSTANCES",
+        "SUPABASE_JWT_SECRET",
+        "SUPABASE_KEY",
+        "SUPABASE_PASSWORD",
+        "WIKI_MCP_TOKEN_SECRET",
+        "WORKDAY_COLLECTOR_ENDPOINT"
+      ]
+    },
+    "wiki-mcp": {
+      "image_id": "sha256:74415450172deb1873760fbbc4e824cdcb58eb37783c9a6e6541ff92159fd7fa",
+      "platform": "linux/amd64",
+      "observed_reference": "smartbrain-mcp-material-reader:2026.10.08-r1",
+      "size_bytes": 192386491,
+      "repo_digests": [
+        "smartbrain-mcp-material-reader@sha256:74415450172deb1873760fbbc4e824cdcb58eb37783c9a6e6541ff92159fd7fa"
+      ],
+      "profiles": [],
+      "required_env": [
+        "ANTHROPIC_AUTH_TOKEN",
+        "AUTH_COOKIE_SECRET",
+        "CLICKHOUSE_PASSWORD",
+        "JWT_SECRET_KEY",
+        "SUPABASE_JWT_SECRET",
+        "SUPABASE_KEY",
+        "SUPABASE_PASSWORD",
+        "WIKI_MCP_TOKEN_SECRET",
+        "WORKDAY_COLLECTOR_ENDPOINT"
+      ]
+    },
+    "agentops-dashboard": {
+      "image_id": "sha256:295d3a7244d555ca1c531beee7eb5729423da5d12f7ea6c509d0f48db598bdaa",
+      "platform": "linux/amd64",
+      "observed_reference": "smartbrain-conversation-summary-frontend:2026.10.08-r1",
+      "size_bytes": 72331317,
+      "repo_digests": [
+        "smartbrain-conversation-summary-frontend@sha256:295d3a7244d555ca1c531beee7eb5729423da5d12f7ea6c509d0f48db598bdaa"
+      ],
+      "profiles": [],
+      "required_env": [
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY",
+        "NEXT_PUBLIC_SUPABASE_URL"
+      ]
+    },
+    "workday-records-unified": {
+      "image_id": "sha256:3d18efac5582502e39f36859fd026371f4d5fe46c840ff313daef946e646940c",
+      "platform": "linux/amd64",
+      "observed_reference": "smartbrain/agentops-dashboard:2026.09.22-workday-records-r1",
+      "size_bytes": 194188404,
+      "repo_digests": [
+        "smartbrain/agentops-dashboard@sha256:3d18efac5582502e39f36859fd026371f4d5fe46c840ff313daef946e646940c"
+      ],
+      "profiles": [],
+      "required_env": []
+    },
+    "personal-gray-web": {
+      "image_id": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+      "platform": "linux/amd64",
+      "observed_reference": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+      "size_bytes": 20984244,
+      "repo_digests": [
+        "nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10"
+      ],
+      "profiles": [],
+      "required_env": []
+    },
+    "smartbrain-monitor-removal": {
+      "image_id": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+      "platform": "linux/amd64",
+      "observed_reference": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+      "size_bytes": 20984244,
+      "repo_digests": [
+        "nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10"
+      ],
+      "profiles": [],
+      "required_env": []
+    },
+    "smartbrain-monitor-removal-public": {
+      "image_id": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+      "platform": "linux/amd64",
+      "observed_reference": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+      "size_bytes": 20984244,
+      "repo_digests": [
+        "nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10"
+      ],
+      "profiles": [],
+      "required_env": []
+    },
+    "ai-worklog-worker": {
+      "image_id": "sha256:d1ac2b0ccaf8fec4ad060ce592ad92bf141f8528517dab546998a9d649e1a1dc",
+      "platform": "linux/amd64",
+      "observed_reference": "smartbrain/api:ubuntu-2026.09.07-sentry-recursion-r1",
+      "size_bytes": 192366547,
+      "repo_digests": [
+        "smartbrain/api@sha256:d1ac2b0ccaf8fec4ad060ce592ad92bf141f8528517dab546998a9d649e1a1dc"
+      ],
+      "profiles": [
+        "workers"
+      ],
+      "required_env": [
+        "ANTHROPIC_AUTH_TOKEN",
+        "AUTH_COOKIE_SECRET",
+        "CLICKHOUSE_PASSWORD",
+        "JWT_SECRET_KEY",
+        "SUPABASE_JWT_SECRET",
+        "SUPABASE_KEY",
+        "SUPABASE_PASSWORD",
+        "WIKI_MCP_TOKEN_SECRET",
+        "WORKDAY_COLLECTOR_ENDPOINT"
+      ]
+    },
+    "edge": {
+      "image_id": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+      "platform": "linux/amd64",
+      "observed_reference": "nginx:1.27.5-alpine",
+      "size_bytes": 20984244,
+      "repo_digests": [
+        "nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10"
+      ],
+      "profiles": [],
+      "required_env": []
+    },
+    "egress-proxy": {
+      "image_id": "sha256:99f70365a81f07a59207113cd31f0c17c62694ad0b2dbb92707c5a0f33befd03",
+      "platform": "linux/amd64",
+      "observed_reference": "smartbrain/egress-proxy:ubuntu-2026.08.28.2",
+      "size_bytes": 21548685,
+      "repo_digests": [
+        "smartbrain/egress-proxy@sha256:99f70365a81f07a59207113cd31f0c17c62694ad0b2dbb92707c5a0f33befd03"
+      ],
+      "profiles": [],
+      "required_env": []
+    },
+    "ingest-worker": {
+      "image_id": "sha256:d1ac2b0ccaf8fec4ad060ce592ad92bf141f8528517dab546998a9d649e1a1dc",
+      "platform": "linux/amd64",
+      "observed_reference": "smartbrain/api:ubuntu-2026.09.07-sentry-recursion-r1",
+      "size_bytes": 192366547,
+      "repo_digests": [
+        "smartbrain/api@sha256:d1ac2b0ccaf8fec4ad060ce592ad92bf141f8528517dab546998a9d649e1a1dc"
+      ],
+      "profiles": [
+        "workers"
+      ],
+      "required_env": [
+        "ANTHROPIC_AUTH_TOKEN",
+        "AUTH_COOKIE_SECRET",
+        "CLICKHOUSE_PASSWORD",
+        "JWT_SECRET_KEY",
+        "SUPABASE_JWT_SECRET",
+        "SUPABASE_KEY",
+        "SUPABASE_PASSWORD",
+        "WIKI_MCP_TOKEN_SECRET",
+        "WORKDAY_COLLECTOR_ENDPOINT"
+      ]
+    },
+    "approval-worker": {
+      "image_id": "sha256:d1ac2b0ccaf8fec4ad060ce592ad92bf141f8528517dab546998a9d649e1a1dc",
+      "platform": "linux/amd64",
+      "observed_reference": "smartbrain/api:ubuntu-2026.09.07-sentry-recursion-r1",
+      "size_bytes": 192366547,
+      "repo_digests": [
+        "smartbrain/api@sha256:d1ac2b0ccaf8fec4ad060ce592ad92bf141f8528517dab546998a9d649e1a1dc"
+      ],
+      "profiles": [
+        "workers"
+      ],
+      "required_env": [
+        "ANTHROPIC_AUTH_TOKEN",
+        "AUTH_COOKIE_SECRET",
+        "CLICKHOUSE_PASSWORD",
+        "JWT_SECRET_KEY",
+        "SUPABASE_JWT_SECRET",
+        "SUPABASE_KEY",
+        "SUPABASE_PASSWORD",
+        "WIKI_MCP_TOKEN_SECRET",
+        "WORKDAY_COLLECTOR_ENDPOINT"
+      ]
+    },
+    "project-material-parse-worker": {
+      "image_id": "sha256:d1ac2b0ccaf8fec4ad060ce592ad92bf141f8528517dab546998a9d649e1a1dc",
+      "platform": "linux/amd64",
+      "observed_reference": "smartbrain/api:ubuntu-2026.09.07-sentry-recursion-r1",
+      "size_bytes": 192366547,
+      "repo_digests": [
+        "smartbrain/api@sha256:d1ac2b0ccaf8fec4ad060ce592ad92bf141f8528517dab546998a9d649e1a1dc"
+      ],
+      "profiles": [
+        "workers"
+      ],
+      "required_env": [
+        "ANTHROPIC_AUTH_TOKEN",
+        "AUTH_COOKIE_SECRET",
+        "CLICKHOUSE_PASSWORD",
+        "JWT_SECRET_KEY",
+        "SUPABASE_JWT_SECRET",
+        "SUPABASE_KEY",
+        "SUPABASE_PASSWORD",
+        "WIKI_MCP_TOKEN_SECRET",
+        "WORKDAY_COLLECTOR_ENDPOINT"
+      ]
+    },
+    "member-wiki-worker": {
+      "image_id": "sha256:d1ac2b0ccaf8fec4ad060ce592ad92bf141f8528517dab546998a9d649e1a1dc",
+      "platform": "linux/amd64",
+      "observed_reference": "smartbrain/api:ubuntu-2026.09.07-sentry-recursion-r1",
+      "size_bytes": 192366547,
+      "repo_digests": [
+        "smartbrain/api@sha256:d1ac2b0ccaf8fec4ad060ce592ad92bf141f8528517dab546998a9d649e1a1dc"
+      ],
+      "profiles": [
+        "workers"
+      ],
+      "required_env": [
+        "ANTHROPIC_AUTH_TOKEN",
+        "AUTH_COOKIE_SECRET",
+        "CLICKHOUSE_PASSWORD",
+        "JWT_SECRET_KEY",
+        "SUPABASE_JWT_SECRET",
+        "SUPABASE_KEY",
+        "SUPABASE_PASSWORD",
+        "WIKI_MCP_TOKEN_SECRET",
+        "WORKDAY_COLLECTOR_ENDPOINT"
+      ]
+    },
+    "project-wiki-worker": {
+      "image_id": "sha256:d1ac2b0ccaf8fec4ad060ce592ad92bf141f8528517dab546998a9d649e1a1dc",
+      "platform": "linux/amd64",
+      "observed_reference": "smartbrain/api:ubuntu-2026.09.07-sentry-recursion-r1",
+      "size_bytes": 192366547,
+      "repo_digests": [
+        "smartbrain/api@sha256:d1ac2b0ccaf8fec4ad060ce592ad92bf141f8528517dab546998a9d649e1a1dc"
+      ],
+      "profiles": [
+        "workers"
+      ],
+      "required_env": [
+        "ANTHROPIC_AUTH_TOKEN",
+        "AUTH_COOKIE_SECRET",
+        "CLICKHOUSE_PASSWORD",
+        "JWT_SECRET_KEY",
+        "SUPABASE_JWT_SECRET",
+        "SUPABASE_KEY",
+        "SUPABASE_PASSWORD",
+        "WIKI_MCP_TOKEN_SECRET",
+        "WORKDAY_COLLECTOR_ENDPOINT"
+      ]
+    },
+    "smartbrain-reverse-tunnel": {
+      "image_id": "sha256:5a6b3b986c5927bab14c41d08d9edc901a9163ef401e252ec32570e43bd1e7d3",
+      "platform": "linux/amd64",
+      "observed_reference": "smartbrain/reverse-tunnel:ubuntu-2026.08.28.2",
+      "size_bytes": 5573204,
+      "repo_digests": [
+        "smartbrain/reverse-tunnel@sha256:5a6b3b986c5927bab14c41d08d9edc901a9163ef401e252ec32570e43bd1e7d3"
+      ],
+      "profiles": [
+        "relay"
+      ],
+      "required_env": []
+    },
+    "redis": {
+      "image_id": "sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952",
+      "platform": "linux/amd64",
+      "observed_reference": "redis:7.4.2-alpine",
+      "size_bytes": 17238094,
+      "repo_digests": [
+        "redis@sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952"
+      ],
+      "profiles": [],
+      "required_env": []
+    },
+    "rag-reranker-service": {
+      "image_id": "sha256:9d46874b6e124ff48ff1b3d1dbf0913d87cb423ed89fb7e9e54936664e4e5dcc",
+      "platform": "linux/amd64",
+      "observed_reference": "smartbrain/rag-reranker:ubuntu-2026.08.28.2",
+      "size_bytes": 4225209921,
+      "repo_digests": [
+        "smartbrain/rag-reranker@sha256:9d46874b6e124ff48ff1b3d1dbf0913d87cb423ed89fb7e9e54936664e4e5dcc"
+      ],
+      "profiles": [
+        "rag"
+      ],
+      "required_env": []
+    },
+    "rag-embedding-service": {
+      "image_id": "sha256:f71a20e233a7fb55afc0aa71703bb7176df5e5e66065825afb1d57ac2fb81674",
+      "platform": "linux/amd64",
+      "observed_reference": "smartbrain/rag-embedding:ubuntu-2026.08.28.2",
+      "size_bytes": 4225210119,
+      "repo_digests": [
+        "smartbrain/rag-embedding@sha256:f71a20e233a7fb55afc0aa71703bb7176df5e5e66065825afb1d57ac2fb81674"
+      ],
+      "profiles": [
+        "rag"
+      ],
+      "required_env": []
+    },
+    "storage-api": {
+      "image_id": "sha256:c8eb9858eafec891a97c27125470aaad54703c3f4eb4d55ca7f1bf6c6411febf",
+      "platform": "linux/amd64",
+      "observed_reference": "supabase/storage-api:v1.60.4",
+      "size_bytes": 244038762,
+      "repo_digests": [
+        "supabase/storage-api@sha256:c8eb9858eafec891a97c27125470aaad54703c3f4eb4d55ca7f1bf6c6411febf"
+      ],
+      "profiles": [],
+      "required_env": [
+        "ANON_KEY",
+        "AUTH_JWT_SECRET",
+        "DATABASE_URL",
+        "SERVICE_KEY",
+        "STORAGE_PUBLIC_URL"
+      ]
+    },
+    "postgrest": {
+      "image_id": "sha256:d2009b5c9deffc210c8a5592698472fede14fd9f6ca89823c8474ca54d58c012",
+      "platform": "linux/amd64",
+      "observed_reference": "public.ecr.aws/supabase/postgrest:v14.14",
+      "size_bytes": 6364329,
+      "repo_digests": [
+        "public.ecr.aws/supabase/postgrest@sha256:d2009b5c9deffc210c8a5592698472fede14fd9f6ca89823c8474ca54d58c012"
+      ],
+      "profiles": [],
+      "required_env": [
+        "PGRST_APP_SETTINGS_JWT_SECRET",
+        "PGRST_DB_URI",
+        "PGRST_JWT_SECRET"
+      ]
+    },
+    "otelcollector": {
+      "image_id": "sha256:ffef99b8d9f4396ba25d9e73b0719af77104820fe6732ad54d96b48d8cbda40d",
+      "platform": "linux/amd64",
+      "observed_reference": "smartbrain/otelcollector:ubuntu-2026.08.28.2",
+      "size_bytes": 172432188,
+      "repo_digests": [
+        "smartbrain/otelcollector@sha256:ffef99b8d9f4396ba25d9e73b0719af77104820fe6732ad54d96b48d8cbda40d"
+      ],
+      "profiles": [],
+      "required_env": [
+        "CLICKHOUSE_PASSWORD",
+        "JWT_SECRET"
+      ]
+    },
+    "auth": {
+      "image_id": "sha256:b252efb680be37d4a8bf77c210cf0439c19b63a4b51929233a65dd101d25bdab",
+      "platform": "linux/amd64",
+      "observed_reference": "public.ecr.aws/supabase/gotrue:v2.192.0",
+      "size_bytes": 28589639,
+      "repo_digests": [
+        "public.ecr.aws/supabase/gotrue@sha256:b252efb680be37d4a8bf77c210cf0439c19b63a4b51929233a65dd101d25bdab"
+      ],
+      "profiles": [],
+      "required_env": [
+        "API_EXTERNAL_URL",
+        "GOTRUE_DB_DATABASE_URL",
+        "GOTRUE_JWT_SECRET",
+        "GOTRUE_SITE_URL",
+        "GOTRUE_URI_ALLOW_LIST"
+      ]
+    },
+    "ai-gateway": {
+      "image_id": "sha256:07d02aa4cf1cf61899daacbffdb95cddbcffc60efa1c5e568c7bbac8382e6fcb",
+      "platform": "linux/amd64",
+      "observed_reference": "smartbrain/ai-gateway:ubuntu-2026.08.28.2",
+      "size_bytes": 47369409,
+      "repo_digests": [
+        "smartbrain/ai-gateway@sha256:07d02aa4cf1cf61899daacbffdb95cddbcffc60efa1c5e568c7bbac8382e6fcb"
+      ],
+      "profiles": [],
+      "required_env": [
+        "ANTHROPIC_AUTH_TOKEN"
+      ]
+    },
+    "postgres": {
+      "image_id": "sha256:af083ef64d0408c8f098ee6f5c364a59b26f36fbc0f3a334a62c5c1d57362e9b",
+      "platform": "linux/amd64",
+      "observed_reference": "public.ecr.aws/supabase/postgres:15.8.1.085",
+      "size_bytes": 680807311,
+      "repo_digests": [
+        "public.ecr.aws/supabase/postgres@sha256:af083ef64d0408c8f098ee6f5c364a59b26f36fbc0f3a334a62c5c1d57362e9b"
+      ],
+      "profiles": [],
+      "required_env": [
+        "POSTGRES_PASSWORD",
+        "SUPABASE_DB_PASSWORD"
+      ]
+    },
+    "clickhouse": {
+      "image_id": "sha256:cd450891db46cc6ffe313ca2b0fb7dbfb897a6873ca74a724cbe050a2cf62621",
+      "platform": "linux/amd64",
+      "observed_reference": "clickhouse/clickhouse-server:24.12.6.70-alpine",
+      "size_bytes": 154957155,
+      "repo_digests": [
+        "clickhouse/clickhouse-server@sha256:cd450891db46cc6ffe313ca2b0fb7dbfb897a6873ca74a724cbe050a2cf62621"
+      ],
+      "profiles": [],
+      "required_env": [
+        "CLICKHOUSE_PASSWORD"
+      ]
+    },
+    "auth-gateway": {
+      "image_id": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+      "platform": "linux/amd64",
+      "observed_reference": "nginx:1.27.5-alpine",
+      "size_bytes": 20984244,
+      "repo_digests": [
+        "nginx@sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10"
+      ],
+      "profiles": [],
+      "required_env": []
+    }
+  },
+  "required_private_files": [
+    "config/ai-gateway.yaml",
+    "config/egress-proxy.yaml",
+    "sites/personal-gray-web/nginx.conf",
+    "sites/smartbrain-monitor-removal/nginx.conf",
+    "sites/smartbrain-monitor-removal-public/nginx.conf"
+  ],
+  "state_directories": [
+    "ai-gateway-auth",
+    "api-tmp",
+    "clickhouse",
+    "clickhouse-backups",
+    "egress-proxy-state",
+    "material-uploads",
+    "models",
+    "postgres",
+    "redis",
+    "storage",
+    "wiki-mcp-cache"
+  ],
+  "resource_reserves": {
+    "min_memory_available_bytes": 4831838208,
+    "min_docker_free_bytes": 42949672960,
+    "min_data_free_bytes": 268435456000,
+    "min_backup_free_bytes": 268435456000
+  },
+  "excluded": [
+    "unreferenced pilots",
+    "retired project-key candidate",
+    "old personal registered and gray API candidates",
+    "Langfuse",
+    "Monitor collector",
+    "adapter",
+    "reconcile timer"
+  ]
+}

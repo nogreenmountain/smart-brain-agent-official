@@ -4,6 +4,8 @@
 
 核对时间：2026-10-09 13:45（Asia/Shanghai）。本轮生产只读；39 个运行容器。实际七组后端模块快照及来源见 [当前源码](../deploy/current/SOURCE.md)。本轮整理正式仓库两条分支，入口见 [仓库整理任务](tasks/2026-10-09-reproducible-repository.md)。
 
+部署入口核对：2026-10-09 14:15。从 [AI-DEPLOY](deployment/AI-DEPLOY.md) 开始。固定镜像与私有配置包已生成，PG/CH隔离结构恢复通过；[交付验收](releases/reproducible-repository-20261009.md)区分已验证与新机完整恢复尚未验证。配置和业务数据不进入Git。
+
 - 个人代理短事务与有界排队已于 12:14 发布，12:17 独立核对；[r2 发布记录](releases/personal-proxy-concurrency-20261009-r2.md)列出实测与限制。r1 失败及实际回退保留。
 - 对话摘要、无适配器归属、Company Memory 更新器和工作台滚动源码已整理；不同运行组件有不同版本，以实际 source manifest 和后继部署分支的 release lock 为准。
 - 当前 Docker 磁盘距原 40 GiB 门槛余量很小；本轮不构建大型镜像、不清理历史、不执行新生产发布。完整冻结 PG 恢复仍未验收。下面 10 月 8 日条目保留为历史，不覆盖此处更新。

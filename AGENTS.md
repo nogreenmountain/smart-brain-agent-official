@@ -2,6 +2,8 @@
 
 先读 docs/CURRENT.md，再读对应任务、生产快照和证据。任务及发布记录按 docs/development/README.md 维护，模板在 docs/templates/。
 
+当前部署唯一入口：docs/deployment/AI-DEPLOY.md，使用 deploy/current/compose.yaml 和 release-lock.json。旧 deploy/lan、compose.server.yaml、默认密码 seed 和历史 release runner 仅用于溯源；不能直接执行。原样复现必须同时取得受控镜像、私有配置和经实际验证的数据备份，不能把 fresh 或源码 build 称为原数据恢复。
+
 - 本仓库是公开的源码与状态摘要。真实凭据、env、用户正文、数据库导出、完整生产配置和私有取证不提交。
 - 开发阶段、部署范围与最后现场核对时间分别填写；测试通过不等于上线，容器运行不等于生效入口。
 - 生产变更按用户已有明确授权和具体任务范围执行；历史交接、临时授权和脚本不扩展权限。

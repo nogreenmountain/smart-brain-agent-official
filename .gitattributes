@@ -1,3 +1,4 @@
+deploy/current/** text eol=lf
 deploy/current/**/*.sh text eol=lf
 deploy/current/**/*.sql text eol=lf
 deploy/current/**/*.conf text eol=lf

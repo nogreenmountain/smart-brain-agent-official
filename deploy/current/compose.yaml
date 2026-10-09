@@ -1,0 +1,2049 @@
+{
+  "name": "${COMPOSE_PROJECT_NAME:-smartbrain-current}",
+  "services": {
+    "api": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "60s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "user": "10001:10001",
+      "read_only": true,
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "pids_limit": 256,
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,nodev,size=128m,uid=${APP_UID:-10001},gid=${APP_GID:-10001},mode=1777"
+      ],
+      "image": "sha256:8eac15848ae9e29080d9deba458d588e572d8b0b1188f8f10dc60040ec41d402",
+      "mem_limit": "${API_MEM_LIMIT:-3g}",
+      "cpus": "${API_CPUS:-3.0}",
+      "command": [
+        "/app/.venv/bin/uvicorn",
+        "agentops.app:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--workers",
+        "2"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "/app/.venv/bin/python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=3)"
+        ],
+        "interval": "10s",
+        "timeout": "5s",
+        "retries": 30,
+        "start_period": "30s"
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/api.env",
+          "format": "raw"
+        }
+      ],
+      "environment": {
+        "PROTOCOL": "https",
+        "API_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "APP_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "SUPABASE_URL": "http://auth-gateway:8080",
+        "SUPABASE_HOST": "postgres",
+        "SUPABASE_PORT": "5432",
+        "REDIS_URL": "redis://redis:6379/0",
+        "CLICKHOUSE_HOST": "clickhouse",
+        "RAG_EMBEDDING_SERVICE_URL": "http://rag-embedding-service:8080",
+        "RAG_RERANKER_SERVICE_URL": "http://rag-reranker-service:8080"
+      },
+      "networks": [
+        "app",
+        "data",
+        "egress"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${STATE_ROOT:?STATE_ROOT required}/material-uploads",
+          "target": "/var/lib/agentops/material-uploads",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ]
+    },
+    "personal-key-api-r1": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "210s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "user": "10001:10001",
+      "read_only": true,
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "pids_limit": 256,
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,nodev,size=128m,uid=${APP_UID:-10001},gid=${APP_GID:-10001},mode=1777",
+        "/var/lib/agentops/tmp:rw,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0750"
+      ],
+      "image": "sha256:08f24c57fdb61d198eca4c2033ef0d6b125d506ad1df8fcc7bc4cb64acb19d9f",
+      "mem_limit": "${API_MEM_LIMIT:-3g}",
+      "cpus": "${API_CPUS:-3.0}",
+      "command": [
+        "/app/.venv/bin/uvicorn",
+        "agentops.api.personal_gateway_app:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--no-access-log"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "/app/.venv/bin/python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+        ],
+        "interval": "10s",
+        "timeout": "5s",
+        "retries": 30,
+        "start_period": "30s"
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/personal-key-api-r1.env",
+          "format": "raw"
+        }
+      ],
+      "environment": {
+        "PROTOCOL": "https",
+        "API_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "APP_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "SUPABASE_URL": "http://auth-gateway:8080",
+        "SUPABASE_HOST": "postgres",
+        "SUPABASE_PORT": "5432",
+        "REDIS_URL": "redis://redis:6379/0",
+        "CLICKHOUSE_HOST": "clickhouse",
+        "RAG_EMBEDDING_SERVICE_URL": "http://rag-embedding-service:8080",
+        "RAG_RERANKER_SERVICE_URL": "http://rag-reranker-service:8080",
+        "SB_PERSONAL_UPSTREAM_URL": "${PERSONAL_UPSTREAM_URL:?PERSONAL_UPSTREAM_URL required}",
+        "SB_PERSONAL_MAX_ACTIVE": "8",
+        "SB_PERSONAL_MAX_WAITING": "24",
+        "SB_PERSONAL_QUEUE_TIMEOUT_SECONDS": "60",
+        "SB_PERSONAL_UPSTREAM_TIMEOUT_SECONDS": "120",
+        "SUPABASE_MIN_POOL_SIZE": "1",
+        "SUPABASE_MAX_POOL_SIZE": "4"
+      },
+      "networks": [
+        "app",
+        "data",
+        "egress"
+      ]
+    },
+    "workday-gateway-read": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "60s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "user": "10001:10001",
+      "read_only": true,
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "pids_limit": 256,
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,nodev,size=128m,uid=${APP_UID:-10001},gid=${APP_GID:-10001},mode=1777",
+        "/var/lib/agentops/tmp:rw,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0750"
+      ],
+      "image": "sha256:985176d5cbf54b6f868a1eef856489fad0be827feac6e0e0a65fc1831838d617",
+      "mem_limit": "${API_MEM_LIMIT:-3g}",
+      "cpus": "${API_CPUS:-3.0}",
+      "command": [
+        "/app/.venv/bin/uvicorn",
+        "agentops.api.workday_gateway_app:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--no-access-log"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "/app/.venv/bin/python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+        ],
+        "interval": "10s",
+        "timeout": "5s",
+        "retries": 30,
+        "start_period": "30s"
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/workday-gateway-read.env",
+          "format": "raw"
+        }
+      ],
+      "environment": {
+        "PROTOCOL": "https",
+        "API_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "APP_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "SUPABASE_URL": "http://auth-gateway:8080",
+        "SUPABASE_HOST": "postgres",
+        "SUPABASE_PORT": "5432",
+        "REDIS_URL": "redis://redis:6379/0",
+        "CLICKHOUSE_HOST": "clickhouse",
+        "RAG_EMBEDDING_SERVICE_URL": "http://rag-embedding-service:8080",
+        "RAG_RERANKER_SERVICE_URL": "http://rag-reranker-service:8080",
+        "SB_PERSONAL_UPSTREAM_URL": "${PERSONAL_UPSTREAM_URL:?PERSONAL_UPSTREAM_URL required}"
+      },
+      "networks": [
+        "app",
+        "data",
+        "egress"
+      ]
+    },
+    "collaboration-api": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "60s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "user": "10001:10001",
+      "read_only": true,
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "pids_limit": 256,
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,nodev,size=128m,uid=${APP_UID:-10001},gid=${APP_GID:-10001},mode=1777",
+        "/var/lib/agentops/tmp:rw,nosuid,nodev,size=64m,uid=10001,gid=10001,mode=0750"
+      ],
+      "image": "sha256:c0133fdde9a8928cefb7cccff04e69e2155976bec21607cf67572202a87b2afc",
+      "mem_limit": "${API_MEM_LIMIT:-3g}",
+      "cpus": "${API_CPUS:-3.0}",
+      "command": [
+        "/app/.venv/bin/uvicorn",
+        "agentops.api.personal_gateway_app:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--no-access-log"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "/app/.venv/bin/python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+        ],
+        "interval": "10s",
+        "timeout": "5s",
+        "retries": 30,
+        "start_period": "30s"
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/collaboration-api.env",
+          "format": "raw"
+        }
+      ],
+      "environment": {
+        "PROTOCOL": "https",
+        "API_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "APP_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "SUPABASE_URL": "http://auth-gateway:8080",
+        "SUPABASE_HOST": "postgres",
+        "SUPABASE_PORT": "5432",
+        "REDIS_URL": "redis://redis:6379/0",
+        "CLICKHOUSE_HOST": "clickhouse",
+        "RAG_EMBEDDING_SERVICE_URL": "http://rag-embedding-service:8080",
+        "RAG_RERANKER_SERVICE_URL": "http://rag-reranker-service:8080",
+        "SB_PERSONAL_UPSTREAM_URL": "${PERSONAL_UPSTREAM_URL:?PERSONAL_UPSTREAM_URL required}"
+      },
+      "networks": [
+        "app",
+        "data",
+        "egress"
+      ]
+    },
+    "wiki-mcp": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "30s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "user": "10001:10001",
+      "read_only": true,
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "pids_limit": 256,
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,nodev,size=128m,uid=${APP_UID:-10001},gid=${APP_GID:-10001},mode=1777"
+      ],
+      "image": "sha256:74415450172deb1873760fbbc4e824cdcb58eb37783c9a6e6541ff92159fd7fa",
+      "mem_limit": "${WIKI_MCP_MEM_LIMIT:-1g}",
+      "cpus": "${WIKI_MCP_CPUS:-1.0}",
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "/app/.venv/bin/python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/health', timeout=3)"
+        ],
+        "interval": "15s",
+        "timeout": "5s",
+        "retries": 10,
+        "start_period": "20s"
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "command": [
+        "/app/.venv/bin/python",
+        "-m",
+        "agentops.wiki_mcp.server"
+      ],
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/wiki-mcp.env",
+          "format": "raw"
+        }
+      ],
+      "environment": {
+        "PROTOCOL": "https",
+        "API_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "APP_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "SUPABASE_URL": "http://auth-gateway:8080",
+        "SUPABASE_HOST": "postgres",
+        "SUPABASE_PORT": "5432",
+        "REDIS_URL": "redis://redis:6379/0",
+        "CLICKHOUSE_HOST": "clickhouse",
+        "RAG_EMBEDDING_SERVICE_URL": "http://rag-embedding-service:8080",
+        "RAG_RERANKER_SERVICE_URL": "http://rag-reranker-service:8080",
+        "WIKI_MCP_PUBLIC_URL": "https://${PUBLIC_HOST}/mcp",
+        "WIKI_MCP_ALLOWED_HOSTS": "${PUBLIC_HOST}",
+        "WIKI_MCP_ALLOWED_ORIGINS": "https://${PUBLIC_HOST}"
+      },
+      "networks": [
+        "app",
+        "data",
+        "egress"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${STATE_ROOT:?STATE_ROOT required}/wiki-mcp-cache",
+          "target": "/app/.cache",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ]
+    },
+    "agentops-dashboard": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "30s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "image": "sha256:295d3a7244d555ca1c531beee7eb5729423da5d12f7ea6c509d0f48db598bdaa",
+      "user": "1000:1000",
+      "read_only": true,
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "pids_limit": 256,
+      "mem_limit": "${AGENTOPS_DASHBOARD_MEM_LIMIT:-1g}",
+      "cpus": "${AGENTOPS_DASHBOARD_CPUS:-1.0}",
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777",
+        "/app/.next/cache:rw,nosuid,nodev,size=128m,uid=1000,gid=1000,mode=0750"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/traces').then(r=>process.exit(r.status<500?0:1)).catch(()=>process.exit(1))"
+        ],
+        "interval": "15s",
+        "timeout": "5s",
+        "retries": 20,
+        "start_period": "30s"
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "command": [
+        "node",
+        "server.js"
+      ],
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/agentops-dashboard.env",
+          "format": "raw"
+        }
+      ],
+      "environment": {
+        "HOSTNAME": "0.0.0.0",
+        "NEXT_PUBLIC_API_URL": "https://${PUBLIC_HOST}",
+        "NEXT_PUBLIC_APP_URL": "https://${PUBLIC_HOST}",
+        "NEXT_PUBLIC_SITE_URL": "https://${PUBLIC_HOST}"
+      },
+      "networks": {
+        "app": {
+          "aliases": [
+            "smartbrain"
+          ]
+        },
+        "frontend": {
+          "aliases": [
+            "smartbrain"
+          ]
+        }
+      }
+    },
+    "workday-records-unified": {
+      "image": "sha256:3d18efac5582502e39f36859fd026371f4d5fe46c840ff313daef946e646940c",
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "command": [
+        "node",
+        "server.js"
+      ],
+      "user": "node",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/workday-records-unified.env",
+          "format": "raw"
+        }
+      ],
+      "environment": {
+        "HOSTNAME": "0.0.0.0",
+        "NEXT_PUBLIC_API_URL": "https://${PUBLIC_HOST}",
+        "NEXT_PUBLIC_APP_URL": "https://${PUBLIC_HOST}",
+        "NEXT_PUBLIC_SITE_URL": "https://${PUBLIC_HOST}"
+      },
+      "networks": [
+        "app",
+        "frontend"
+      ],
+      "stop_grace_period": "30s"
+    },
+    "personal-gray-web": {
+      "image": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "command": [
+        "-g",
+        "daemon off;"
+      ],
+      "user": "101:101",
+      "entrypoint": [
+        "nginx"
+      ],
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/personal-gray-web.env",
+          "format": "raw"
+        }
+      ],
+      "networks": [
+        "app",
+        "frontend"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${PRIVATE_ROOT}/sites/personal-gray-web",
+          "target": "/site",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${PRIVATE_ROOT}/sites/personal-gray-web/nginx.conf",
+          "target": "/etc/nginx/nginx.conf",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "stop_grace_period": "30s"
+    },
+    "smartbrain-monitor-removal": {
+      "image": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "command": [
+        "-c",
+        "/site/nginx.conf",
+        "-g",
+        "daemon off;"
+      ],
+      "user": "101:101",
+      "entrypoint": [
+        "nginx"
+      ],
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/smartbrain-monitor-removal.env",
+          "format": "raw"
+        }
+      ],
+      "networks": [
+        "app",
+        "frontend"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${PRIVATE_ROOT}/sites/smartbrain-monitor-removal",
+          "target": "/site",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "stop_grace_period": "30s"
+    },
+    "smartbrain-monitor-removal-public": {
+      "image": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "restart": "unless-stopped",
+      "command": [
+        "-c",
+        "/site/nginx.conf",
+        "-g",
+        "daemon off;"
+      ],
+      "user": "101:101",
+      "entrypoint": [
+        "nginx"
+      ],
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/smartbrain-monitor-removal-public.env",
+          "format": "raw"
+        }
+      ],
+      "networks": [
+        "app",
+        "frontend"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${PRIVATE_ROOT}/sites/smartbrain-monitor-removal-public",
+          "target": "/site",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "stop_grace_period": "30s"
+    },
+    "ai-worklog-worker": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "30s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "user": "10001:10001",
+      "read_only": true,
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "pids_limit": 256,
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,nodev,size=128m,uid=${APP_UID:-10001},gid=${APP_GID:-10001},mode=1777"
+      ],
+      "image": "sha256:d1ac2b0ccaf8fec4ad060ce592ad92bf141f8528517dab546998a9d649e1a1dc",
+      "mem_limit": "${AI_WORKLOG_MEM_LIMIT:-1g}",
+      "cpus": "${AI_WORKLOG_CPUS:-1.0}",
+      "command": [
+        "/app/.venv/bin/python",
+        "-m",
+        "agentops.ai_usage.daily_log_worker"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "/app/.venv/bin/python",
+          "-c",
+          "import os; os.kill(1, 0)"
+        ],
+        "interval": "30s",
+        "timeout": "5s",
+        "retries": 5
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/ai-worklog-worker.env",
+          "format": "raw"
+        }
+      ],
+      "environment": {
+        "PROTOCOL": "https",
+        "API_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "APP_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "SUPABASE_URL": "http://auth-gateway:8080",
+        "SUPABASE_HOST": "postgres",
+        "SUPABASE_PORT": "5432",
+        "REDIS_URL": "redis://redis:6379/0",
+        "CLICKHOUSE_HOST": "clickhouse",
+        "RAG_EMBEDDING_SERVICE_URL": "http://rag-embedding-service:8080",
+        "RAG_RERANKER_SERVICE_URL": "http://rag-reranker-service:8080"
+      },
+      "profiles": [
+        "workers"
+      ],
+      "networks": [
+        "app",
+        "data",
+        "egress"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "./runtime-sources/worklog-worker/agentops/ai_usage/daily_log_service.py",
+          "target": "/app/agentops/ai_usage/daily_log_service.py",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        },
+        {
+          "type": "bind",
+          "source": "./runtime-sources/worklog-worker/agentops/ai_usage/daily_log_worker.py",
+          "target": "/app/agentops/ai_usage/daily_log_worker.py",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ]
+    },
+    "edge": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "30s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "image": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+      "mem_limit": "${EDGE_MEM_LIMIT:-256m}",
+      "cpus": "${EDGE_CPUS:-0.50}",
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "wget",
+          "-qO-",
+          "http://127.0.0.1:8080/health"
+        ],
+        "interval": "10s",
+        "timeout": "5s",
+        "retries": 20
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "command": [
+        "nginx",
+        "-g",
+        "daemon off;"
+      ],
+      "user": "0:0",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/edge.env",
+          "format": "raw"
+        }
+      ],
+      "networks": [
+        "app",
+        "frontend"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "./nginx/edge.conf",
+          "target": "/etc/nginx/conf.d/default.conf",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "ports": [
+        "127.0.0.1:${EDGE_PORT:-8080}:8080"
+      ]
+    },
+    "egress-proxy": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "30s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "image": "sha256:99f70365a81f07a59207113cd31f0c17c62694ad0b2dbb92707c5a0f33befd03",
+      "user": "10001:10001",
+      "read_only": true,
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "pids_limit": 128,
+      "mem_limit": "${EGRESS_PROXY_MEM_LIMIT:-384m}",
+      "cpus": "${EGRESS_PROXY_CPUS:-0.75}",
+      "command": [
+        "-d",
+        "/var/lib/mihomo",
+        "-f",
+        "/etc/mihomo/config.yaml"
+      ],
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,nodev,size=32m,uid=${APP_UID:-10001},gid=${APP_GID:-10001},mode=1777"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "nc -z -w 3 127.0.0.1 7897"
+        ],
+        "interval": "10s",
+        "timeout": "5s",
+        "retries": 30,
+        "start_period": "10s"
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/egress-proxy.env",
+          "format": "raw"
+        }
+      ],
+      "networks": [
+        "app",
+        "egress"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${PRIVATE_ROOT}/config/egress-proxy.yaml",
+          "target": "/etc/mihomo/config.yaml",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${STATE_ROOT:?STATE_ROOT required}/egress-proxy-state",
+          "target": "/var/lib/mihomo",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ]
+    },
+    "ingest-worker": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "30s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "user": "10001:10001",
+      "read_only": true,
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "pids_limit": 256,
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,nodev,size=128m,uid=${APP_UID:-10001},gid=${APP_GID:-10001},mode=1777"
+      ],
+      "image": "sha256:d1ac2b0ccaf8fec4ad060ce592ad92bf141f8528517dab546998a9d649e1a1dc",
+      "mem_limit": "${INGEST_WORKER_MEM_LIMIT:-2g}",
+      "cpus": "${INGEST_WORKER_CPUS:-2.0}",
+      "command": [
+        "/app/.venv/bin/python",
+        "-m",
+        "agentops.ingest_worker"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "/app/.venv/bin/python",
+          "-c",
+          "import os; os.kill(1, 0)"
+        ],
+        "interval": "30s",
+        "timeout": "5s",
+        "retries": 5
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/ingest-worker.env",
+          "format": "raw"
+        }
+      ],
+      "environment": {
+        "PROTOCOL": "https",
+        "API_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "APP_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "SUPABASE_URL": "http://auth-gateway:8080",
+        "SUPABASE_HOST": "postgres",
+        "SUPABASE_PORT": "5432",
+        "REDIS_URL": "redis://redis:6379/0",
+        "CLICKHOUSE_HOST": "clickhouse",
+        "RAG_EMBEDDING_SERVICE_URL": "http://rag-embedding-service:8080",
+        "RAG_RERANKER_SERVICE_URL": "http://rag-reranker-service:8080"
+      },
+      "profiles": [
+        "workers"
+      ],
+      "networks": [
+        "app",
+        "data",
+        "egress"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${STATE_ROOT:?STATE_ROOT required}/material-uploads",
+          "target": "/var/lib/agentops/material-uploads",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${STATE_ROOT:?STATE_ROOT required}/api-tmp",
+          "target": "/var/lib/agentops/tmp",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ]
+    },
+    "approval-worker": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "30s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "user": "10001:10001",
+      "read_only": true,
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "pids_limit": 256,
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,nodev,size=128m,uid=${APP_UID:-10001},gid=${APP_GID:-10001},mode=1777"
+      ],
+      "image": "sha256:d1ac2b0ccaf8fec4ad060ce592ad92bf141f8528517dab546998a9d649e1a1dc",
+      "mem_limit": "${APPROVAL_WORKER_MEM_LIMIT:-3g}",
+      "cpus": "${APPROVAL_WORKER_CPUS:-2.0}",
+      "command": [
+        "/app/.venv/bin/python",
+        "-m",
+        "agentops.project_memory.approval_worker"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "/app/.venv/bin/python",
+          "-c",
+          "import os; os.kill(1, 0)"
+        ],
+        "interval": "30s",
+        "timeout": "5s",
+        "retries": 5
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/approval-worker.env",
+          "format": "raw"
+        }
+      ],
+      "environment": {
+        "PROTOCOL": "https",
+        "API_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "APP_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "SUPABASE_URL": "http://auth-gateway:8080",
+        "SUPABASE_HOST": "postgres",
+        "SUPABASE_PORT": "5432",
+        "REDIS_URL": "redis://redis:6379/0",
+        "CLICKHOUSE_HOST": "clickhouse",
+        "RAG_EMBEDDING_SERVICE_URL": "http://rag-embedding-service:8080",
+        "RAG_RERANKER_SERVICE_URL": "http://rag-reranker-service:8080"
+      },
+      "profiles": [
+        "workers"
+      ],
+      "networks": [
+        "app",
+        "data",
+        "egress"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${STATE_ROOT:?STATE_ROOT required}/material-uploads",
+          "target": "/var/lib/agentops/material-uploads",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${STATE_ROOT:?STATE_ROOT required}/api-tmp",
+          "target": "/var/lib/agentops/tmp",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ]
+    },
+    "project-material-parse-worker": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "30s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "user": "10001:10001",
+      "read_only": true,
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "pids_limit": 256,
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,nodev,size=128m,uid=${APP_UID:-10001},gid=${APP_GID:-10001},mode=1777"
+      ],
+      "image": "sha256:d1ac2b0ccaf8fec4ad060ce592ad92bf141f8528517dab546998a9d649e1a1dc",
+      "mem_limit": "${PROJECT_MATERIAL_PARSE_MEM_LIMIT:-2g}",
+      "cpus": "${PROJECT_MATERIAL_PARSE_CPUS:-1.5}",
+      "command": [
+        "/app/.venv/bin/python",
+        "-m",
+        "agentops.project_memory.async_parser_worker"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "/app/.venv/bin/python",
+          "-c",
+          "import os; os.kill(1, 0)"
+        ],
+        "interval": "30s",
+        "timeout": "5s",
+        "retries": 5
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/project-material-parse-worker.env",
+          "format": "raw"
+        }
+      ],
+      "environment": {
+        "PROTOCOL": "https",
+        "API_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "APP_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "SUPABASE_URL": "http://auth-gateway:8080",
+        "SUPABASE_HOST": "postgres",
+        "SUPABASE_PORT": "5432",
+        "REDIS_URL": "redis://redis:6379/0",
+        "CLICKHOUSE_HOST": "clickhouse",
+        "RAG_EMBEDDING_SERVICE_URL": "http://rag-embedding-service:8080",
+        "RAG_RERANKER_SERVICE_URL": "http://rag-reranker-service:8080"
+      },
+      "profiles": [
+        "workers"
+      ],
+      "networks": [
+        "app",
+        "data",
+        "egress"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${STATE_ROOT:?STATE_ROOT required}/material-uploads",
+          "target": "/var/lib/agentops/material-uploads",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${STATE_ROOT:?STATE_ROOT required}/api-tmp",
+          "target": "/var/lib/agentops/tmp",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ]
+    },
+    "member-wiki-worker": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "30s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "user": "10001:10001",
+      "read_only": true,
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "pids_limit": 256,
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,nodev,size=128m,uid=${APP_UID:-10001},gid=${APP_GID:-10001},mode=1777"
+      ],
+      "image": "sha256:d1ac2b0ccaf8fec4ad060ce592ad92bf141f8528517dab546998a9d649e1a1dc",
+      "mem_limit": "${MEMBER_WIKI_MEM_LIMIT:-1g}",
+      "cpus": "${MEMBER_WIKI_CPUS:-1.0}",
+      "command": [
+        "/app/.venv/bin/python",
+        "-m",
+        "agentops.member_wiki.worker"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "/app/.venv/bin/python",
+          "-c",
+          "import os; os.kill(1, 0)"
+        ],
+        "interval": "30s",
+        "timeout": "5s",
+        "retries": 5
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/member-wiki-worker.env",
+          "format": "raw"
+        }
+      ],
+      "environment": {
+        "PROTOCOL": "https",
+        "API_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "APP_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "SUPABASE_URL": "http://auth-gateway:8080",
+        "SUPABASE_HOST": "postgres",
+        "SUPABASE_PORT": "5432",
+        "REDIS_URL": "redis://redis:6379/0",
+        "CLICKHOUSE_HOST": "clickhouse",
+        "RAG_EMBEDDING_SERVICE_URL": "http://rag-embedding-service:8080",
+        "RAG_RERANKER_SERVICE_URL": "http://rag-reranker-service:8080"
+      },
+      "profiles": [
+        "workers"
+      ],
+      "networks": [
+        "app",
+        "data",
+        "egress"
+      ]
+    },
+    "project-wiki-worker": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "30s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "user": "10001:10001",
+      "read_only": true,
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "pids_limit": 256,
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,nodev,size=128m,uid=${APP_UID:-10001},gid=${APP_GID:-10001},mode=1777"
+      ],
+      "image": "sha256:d1ac2b0ccaf8fec4ad060ce592ad92bf141f8528517dab546998a9d649e1a1dc",
+      "mem_limit": "${PROJECT_WIKI_MEM_LIMIT:-1g}",
+      "cpus": "${PROJECT_WIKI_CPUS:-1.0}",
+      "command": [
+        "/app/.venv/bin/python",
+        "-m",
+        "agentops.project_wiki.worker"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "/app/.venv/bin/python",
+          "-c",
+          "import os; os.kill(1, 0)"
+        ],
+        "interval": "30s",
+        "timeout": "5s",
+        "retries": 5
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/project-wiki-worker.env",
+          "format": "raw"
+        }
+      ],
+      "environment": {
+        "PROTOCOL": "https",
+        "API_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "APP_DOMAIN": "${PUBLIC_HOST:?PUBLIC_HOST required}",
+        "SUPABASE_URL": "http://auth-gateway:8080",
+        "SUPABASE_HOST": "postgres",
+        "SUPABASE_PORT": "5432",
+        "REDIS_URL": "redis://redis:6379/0",
+        "CLICKHOUSE_HOST": "clickhouse",
+        "RAG_EMBEDDING_SERVICE_URL": "http://rag-embedding-service:8080",
+        "RAG_RERANKER_SERVICE_URL": "http://rag-reranker-service:8080"
+      },
+      "profiles": [
+        "workers"
+      ],
+      "networks": [
+        "app",
+        "data",
+        "egress"
+      ]
+    },
+    "smartbrain-reverse-tunnel": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "30s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "image": "sha256:5a6b3b986c5927bab14c41d08d9edc901a9163ef401e252ec32570e43bd1e7d3",
+      "read_only": true,
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "pids_limit": 64,
+      "mem_limit": "${TUNNEL_MEM_LIMIT:-128m}",
+      "cpus": "${TUNNEL_CPUS:-0.25}",
+      "tmpfs": [
+        "/run/relay:rw,noexec,nosuid,nodev,size=1m,mode=0700"
+      ],
+      "command": [
+        "-NT",
+        "-o",
+        "BatchMode=yes",
+        "-o",
+        "ExitOnForwardFailure=yes",
+        "-o",
+        "ServerAliveInterval=30",
+        "-o",
+        "ServerAliveCountMax=3",
+        "-o",
+        "StrictHostKeyChecking=yes",
+        "-o",
+        "UserKnownHostsFile=/run/relay/known_hosts",
+        "-o",
+        "IdentityFile=/run/relay/id_ed25519",
+        "-o",
+        "IdentitiesOnly=yes",
+        "-p",
+        "${TUNNEL_PORT:-22}",
+        "-R",
+        "127.0.0.1:13002:edge:8080",
+        "-R",
+        "127.0.0.1:18000:edge:8080",
+        "-R",
+        "127.0.0.1:18010:wiki-mcp:8010",
+        "-R",
+        "127.0.0.1:13001:agentops-dashboard:3000",
+        "-R",
+        "127.0.0.1:14318:otelcollector:4318",
+        "${TUNNEL_USER}@${TUNNEL_HOST}"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "kill -0 1"
+        ],
+        "interval": "20s",
+        "timeout": "5s",
+        "retries": 5
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "user": "0:0",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/smartbrain-reverse-tunnel.env",
+          "format": "raw"
+        }
+      ],
+      "profiles": [
+        "relay"
+      ],
+      "networks": [
+        "app",
+        "egress"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${PRIVATE_ROOT}/relay/id_ed25519",
+          "target": "/run/relay-src/id_ed25519",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${PRIVATE_ROOT}/relay/known_hosts",
+          "target": "/run/relay-src/known_hosts",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ]
+    },
+    "redis": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "60s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "image": "sha256:02419de7eddf55aa5bcf49efb74e88fa8d931b4d77c07eff8a6b2144472b6952",
+      "mem_limit": "${REDIS_MEM_LIMIT:-1g}",
+      "cpus": "${REDIS_CPUS:-0.75}",
+      "command": [
+        "redis-server",
+        "--appendonly",
+        "yes",
+        "--appendfsync",
+        "everysec",
+        "--maxmemory-policy",
+        "noeviction"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "redis-cli",
+          "ping"
+        ],
+        "interval": "5s",
+        "timeout": "3s",
+        "retries": 20
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "user": "0:0",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/redis.env",
+          "format": "raw"
+        }
+      ],
+      "networks": [
+        "data"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${STATE_ROOT:?STATE_ROOT required}/redis",
+          "target": "/data",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ]
+    },
+    "rag-reranker-service": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "30s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "image": "sha256:9d46874b6e124ff48ff1b3d1dbf0913d87cb423ed89fb7e9e54936664e4e5dcc",
+      "gpus": "all",
+      "user": "10001:10001",
+      "read_only": true,
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "pids_limit": 256,
+      "mem_limit": "${RAG_RERANK_MEM_LIMIT:-5g}",
+      "cpus": "${RAG_RERANK_CPUS:-3.0}",
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,nodev,size=256m,uid=${APP_UID:-10001},gid=${APP_GID:-10001},mode=1777"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5)"
+        ],
+        "interval": "20s",
+        "timeout": "10s",
+        "retries": 30,
+        "start_period": "180s"
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "command": [
+        "uvicorn",
+        "main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8080",
+        "--workers",
+        "1"
+      ],
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/rag-reranker-service.env",
+          "format": "raw"
+        }
+      ],
+      "profiles": [
+        "rag"
+      ],
+      "networks": [
+        "app",
+        "data",
+        "egress"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${STATE_ROOT:?STATE_ROOT required}/models",
+          "target": "/models",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ]
+    },
+    "rag-embedding-service": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "30s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "image": "sha256:f71a20e233a7fb55afc0aa71703bb7176df5e5e66065825afb1d57ac2fb81674",
+      "gpus": "all",
+      "user": "10001:10001",
+      "read_only": true,
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "pids_limit": 256,
+      "mem_limit": "${RAG_EMBED_MEM_LIMIT:-5g}",
+      "cpus": "${RAG_EMBED_CPUS:-3.0}",
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,nodev,size=256m,uid=${APP_UID:-10001},gid=${APP_GID:-10001},mode=1777"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=5)"
+        ],
+        "interval": "20s",
+        "timeout": "10s",
+        "retries": 30,
+        "start_period": "180s"
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "command": [
+        "uvicorn",
+        "main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8080",
+        "--workers",
+        "1"
+      ],
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/rag-embedding-service.env",
+          "format": "raw"
+        }
+      ],
+      "profiles": [
+        "rag"
+      ],
+      "networks": [
+        "app",
+        "data",
+        "egress"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${STATE_ROOT:?STATE_ROOT required}/models",
+          "target": "/models",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ]
+    },
+    "storage-api": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "30s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "image": "sha256:c8eb9858eafec891a97c27125470aaad54703c3f4eb4d55ca7f1bf6c6411febf",
+      "user": "1000:1000",
+      "read_only": true,
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "pids_limit": 256,
+      "mem_limit": "${STORAGE_MEM_LIMIT:-1g}",
+      "cpus": "${STORAGE_CPUS:-1.0}",
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,nodev,size=64m,uid=${STORAGE_UID:-1000},gid=${STORAGE_GID:-1000},mode=1777"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:5000/status"
+        ],
+        "interval": "10s",
+        "timeout": "5s",
+        "retries": 30,
+        "start_period": "20s"
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "command": [
+        "node",
+        "dist/start/server.js"
+      ],
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/storage-api.env",
+          "format": "raw"
+        }
+      ],
+      "networks": [
+        "app",
+        "data"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${STATE_ROOT:?STATE_ROOT required}/storage",
+          "target": "/var/lib/storage",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ]
+    },
+    "postgrest": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "30s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "image": "sha256:d2009b5c9deffc210c8a5592698472fede14fd9f6ca89823c8474ca54d58c012",
+      "mem_limit": "${POSTGREST_MEM_LIMIT:-512m}",
+      "cpus": "${POSTGREST_CPUS:-0.75}",
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "postgrest",
+          "--ready"
+        ],
+        "interval": "10s",
+        "timeout": "5s",
+        "retries": 30,
+        "start_period": "20s"
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "command": [
+        "/bin/postgrest"
+      ],
+      "user": "1000",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/postgrest.env",
+          "format": "raw"
+        }
+      ],
+      "networks": [
+        "app",
+        "data"
+      ]
+    },
+    "otelcollector": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "30s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "image": "sha256:ffef99b8d9f4396ba25d9e73b0719af77104820fe6732ad54d96b48d8cbda40d",
+      "read_only": true,
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "pids_limit": 256,
+      "mem_limit": "${OTEL_MEM_LIMIT:-1g}",
+      "cpus": "${OTEL_CPUS:-1.0}",
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "/otelcontribcol",
+          "--version"
+        ],
+        "interval": "20s",
+        "timeout": "5s",
+        "retries": 10
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "command": [
+        "--config=/etc/config/base.yaml",
+        "--config=/etc/config/processors.yaml"
+      ],
+      "user": "10001:10001",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/otelcollector.env",
+          "format": "raw"
+        }
+      ],
+      "networks": [
+        "app",
+        "data"
+      ]
+    },
+    "auth": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "30s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "image": "sha256:b252efb680be37d4a8bf77c210cf0439c19b63a4b51929233a65dd101d25bdab",
+      "mem_limit": "${AUTH_MEM_LIMIT:-512m}",
+      "cpus": "${AUTH_CPUS:-0.75}",
+      "healthcheck": {
+        "test": [
+          "CMD",
+          "wget",
+          "-qO-",
+          "http://127.0.0.1:9999/health"
+        ],
+        "interval": "10s",
+        "timeout": "5s",
+        "retries": 30,
+        "start_period": "20s"
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "command": [
+        "auth"
+      ],
+      "user": "supabase",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/auth.env",
+          "format": "raw"
+        }
+      ],
+      "networks": [
+        "app",
+        "data"
+      ]
+    },
+    "ai-gateway": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "30s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "image": "sha256:07d02aa4cf1cf61899daacbffdb95cddbcffc60efa1c5e568c7bbac8382e6fcb",
+      "user": "10001:10001",
+      "read_only": true,
+      "security_opt": [
+        "no-new-privileges:true"
+      ],
+      "cap_drop": [
+        "ALL"
+      ],
+      "pids_limit": 128,
+      "mem_limit": "${AI_GATEWAY_MEM_LIMIT:-512m}",
+      "cpus": "${AI_GATEWAY_CPUS:-1.0}",
+      "command": [
+        "-config",
+        "/etc/ai-gateway/config.yaml"
+      ],
+      "tmpfs": [
+        "/tmp:rw,noexec,nosuid,nodev,size=64m,uid=${APP_UID:-10001},gid=${APP_GID:-10001},mode=1777"
+      ],
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "curl -fsS -H 'Authorization: Bearer '$$ANTHROPIC_AUTH_TOKEN http://127.0.0.1:3000/v1/models | grep -q '\"id\"'"
+        ],
+        "interval": "10s",
+        "timeout": "5s",
+        "retries": 30,
+        "start_period": "20s"
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/ai-gateway.env",
+          "format": "raw"
+        }
+      ],
+      "networks": [
+        "app",
+        "egress"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "${PRIVATE_ROOT}/config/ai-gateway.yaml",
+          "target": "/etc/ai-gateway/config.yaml",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${STATE_ROOT:?STATE_ROOT required}/ai-gateway-auth",
+          "target": "/var/lib/ai-gateway/auth",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "depends_on": {
+        "egress-proxy": {
+          "condition": "service_started"
+        }
+      }
+    },
+    "postgres": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "120s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "image": "sha256:af083ef64d0408c8f098ee6f5c364a59b26f36fbc0f3a334a62c5c1d57362e9b",
+      "shm_size": "512m",
+      "mem_limit": "${POSTGRES_MEM_LIMIT:-4g}",
+      "cpus": "${POSTGRES_CPUS:-2.0}",
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "test -f \"$$PGDATA/.smartbrain-init-complete\" && pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"
+        ],
+        "interval": "5s",
+        "timeout": "3s",
+        "retries": 30,
+        "start_period": "20s"
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "command": [
+        "postgres",
+        "-D",
+        "/etc/postgresql"
+      ],
+      "user": "0:0",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/postgres.env",
+          "format": "raw"
+        }
+      ],
+      "networks": [
+        "data"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "./postgres/required-extensions.sql",
+          "target": "/docker-entrypoint-initdb.d/z0-required-extensions.sql",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        },
+        {
+          "type": "bind",
+          "source": "./postgres/ensure-supabase-roles.sh",
+          "target": "/docker-entrypoint-initdb.d/zz-ensure-supabase-roles.sh",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        },
+        {
+          "type": "bind",
+          "source": "./postgres/supabase-roles.sql",
+          "target": "/opt/smartbrain/postgres/supabase-roles.sql",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${STATE_ROOT:?STATE_ROOT required}/postgres",
+          "target": "/var/lib/postgresql/data",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ],
+      "environment": {
+        "PGDATA": "/var/lib/postgresql/data"
+      }
+    },
+    "clickhouse": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "120s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "image": "sha256:cd450891db46cc6ffe313ca2b0fb7dbfb897a6873ca74a724cbe050a2cf62621",
+      "mem_limit": "${CLICKHOUSE_MEM_LIMIT:-4g}",
+      "cpus": "${CLICKHOUSE_CPUS:-2.0}",
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:8123/ping | grep Ok"
+        ],
+        "interval": "10s",
+        "timeout": "5s",
+        "retries": 30,
+        "start_period": "30s"
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "user": "0:0",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/clickhouse.env",
+          "format": "raw"
+        }
+      ],
+      "networks": [
+        "data"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "./clickhouse/backup-disk.xml",
+          "target": "/etc/clickhouse-server/config.d/backup-disk.xml",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${STATE_ROOT:?STATE_ROOT required}/clickhouse",
+          "target": "/var/lib/clickhouse",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        },
+        {
+          "type": "bind",
+          "source": "${STATE_ROOT:?STATE_ROOT required}/clickhouse-backups",
+          "target": "/var/lib/clickhouse/backups",
+          "read_only": false,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ]
+    },
+    "auth-gateway": {
+      "restart": "unless-stopped",
+      "stop_grace_period": "30s",
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "${LOG_MAX_SIZE:-20m}",
+          "max-file": "${LOG_MAX_FILES:-5}"
+        }
+      },
+      "image": "sha256:65645c7bb6a0661892a8b03b89d0743208a18dd2f3f17a54ef4b76fb8e2f2a10",
+      "mem_limit": "${AUTH_GATEWAY_MEM_LIMIT:-256m}",
+      "cpus": "${AUTH_GATEWAY_CPUS:-0.50}",
+      "healthcheck": {
+        "test": [
+          "CMD-SHELL",
+          "wget -qO- http://127.0.0.1:8080/auth/v1/health >/dev/null && wget -qO- http://127.0.0.1:8080/rest/v1/ >/dev/null && wget -qO- http://127.0.0.1:8080/storage/v1/status >/dev/null"
+        ],
+        "interval": "10s",
+        "timeout": "5s",
+        "retries": 20
+      },
+      "platform": "linux/amd64",
+      "pull_policy": "never",
+      "command": [
+        "nginx",
+        "-g",
+        "daemon off;"
+      ],
+      "user": "0:0",
+      "env_file": [
+        {
+          "path": "${PRIVATE_ROOT:?PRIVATE_ROOT required}/env/auth-gateway.env",
+          "format": "raw"
+        }
+      ],
+      "networks": [
+        "app",
+        "data"
+      ],
+      "volumes": [
+        {
+          "type": "bind",
+          "source": "./nginx/auth-gateway.conf",
+          "target": "/etc/nginx/conf.d/default.conf",
+          "read_only": true,
+          "bind": {
+            "create_host_path": false
+          }
+        }
+      ]
+    }
+  },
+  "networks": {
+    "app": {
+      "internal": true
+    },
+    "frontend": {
+      "internal": true
+    },
+    "data": {
+      "internal": true
+    },
+    "egress": {}
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "mode": "restore",
+  "verified": false,
+  "postgres": false,
+  "clickhouse": false,
+  "files": false,
+  "roles": false,
+  "authorization": false,
+  "secrets": false,
+  "verified_at": "",
+  "evidence_directory": "",
+  "note": "Owner fills only after actual isolated verification. False is intentional; this file is not a successful restore receipt."
+}
