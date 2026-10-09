@@ -70,3 +70,9 @@
 19:01再次核对：22样本/最新18:59:48，首个完整18:54:48–18:59:48窗口内部err.log Code241=0，入口200/匿名401和个人日志错误0；19:01直接计数仍7705/最后18:49:57，metric parts21/元数据行数3771309，表设置与预处理配置保持。cold271994171392字节（253.31GiB）/Docker43143720960（40.18GiB）恢复一些临时合并空间，MemAvailable最近采样8341897216字节。cgroup max累计3492（18:43为2503），没有OOM/oom_kill；该增量时间未逐条定位，不能把缓存回收/limit事件称零压力。尚需第二个完全后继采样窗口和整夜趋势，继续只读观察。文档后继提交122cd8f48427ef47e6f0d55a9887ccb7df9faf02已推official/远端一致、工作树干净，main不变。
 
 正式交付修复提交778349b18d8b00d635cf276051abd51b254a1b64已推official/远端一致，main431022b保持；XML与生产e14fd07b逐字节一致，release-lock为current-20261009-streaming-ch-r2，23部署测试及sources检查通过。5份本轮文档镜像E盘/交付树并核对字节；heartbeat补本次新SHA/不可重放/后继窗口要求，ACTIVE/名称/日程/目标/完整prompt读回一致。保存metric-buffer-stage-checkpoint.json和脚本hash，所有候选与发布runner终态，仅原collector/heartbeat继续；未做生产回退、完整恢复或实际30人容量验收。
+
+19:05续跑：两个完整后继窗口18:54:48–18:59:48和18:59:48–19:04:48均0 Code241；直接未清零计数仍7705/最新18:49:57。r2原Invocation/PID/SHA保持，23样本、无>450秒缺口/采集错误/host OOM。19:05独立复核1025个容器完整配置与启动代际保持、39运行，23业务对象结构/UUID/元数据行数和metric原UUID、新XMLe14fd07b、8公网入口、personal current精确绑定/8/24/DB3、edge双视图及backup20登记通过。没有本轮生产变更或测试重放。
+
+CH metric active parts21/text_log16，当前无活动合并；跟踪内存267346197字节、cgroup约2.60GB（不同口径，不能相减当精确缓存数）。19:01→19:05 memory.events.max均3492，5秒CPU节流0/50、无OOM/oom_kill；18:43→19:01的历史增量时刻仍未定位，不把整段当零压力。MemAvailable最近8362524672字节、SwapFree291627008字节，未见新增host OOM。空间Docker43143774208（40.18GiB）/cold271992659968（253.31GiB）/runtime34295930880/backup554074771456字节，仍薄储备，不继续大测试/归档。
+
+个人完成仍35×200/1×499/3×502，18:00之后无自然完成；最近窗口0排队/DB0、PG14 idle/1诊断active/无idle-in-transaction，日志超时/连接/落库失败0；Windows脱敏事件无新增。timer仍次日02:58:03，backup inactive/success/PID0/Job空，仅观察原计划。此次已满足两窗口效果验证，整夜与30真实成员容量仍待；继续原有限observer/heartbeat。
