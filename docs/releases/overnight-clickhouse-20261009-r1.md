@@ -33,4 +33,6 @@ CH24.12.6.70，2CPU/4GiB容器、3.6GiB内部上限；后台pool16×ratio2，17:
 
 部署工具新增对固定XML的SHA校验，Red→Green及23项部署测试通过，源文件manifest通过。新交付分支codex/overnight-operations-20261009准备提交；原镜像与受控私有包保持，新机直接使用本分支Compose挂载的XML，原包先按其原manifest校验，不能被旧包覆盖本分支配置。
 
+18:01两个后继5分钟采样仍有Code241；当前保持窄修复带来的并行/CPU改善，不重复重启。cold可用空间238.75–242.18GiB低于250GiB储备，已有大合并结果和inactive parts，正常回收在进行但差额来源未全部核对。停止进一步生产调整/大型测试或归档，不手工清理历史。official分支提交8430aa6a25ade34adb36a84af8bd555e5839c410已push/远端SHA一致，main431022b不变。后续配置必须先恢复资源门禁并验证新候选；仍不能称全部内存故障解决。
+
 证据：本地 `.artifacts/overnight-operations-20261009/{ch-pressure-20261009T093636+0000,ch-candidate-metadata,ch-candidate-test-r2,ch-preflight,ch-promotion-result,ch-release-verified}.json`，远端同任务目录中原始私有基线、配置和每步intent。所有隔离runner终态；原observer/heartbeat继续，不重跑发布、test或旧r1失败。

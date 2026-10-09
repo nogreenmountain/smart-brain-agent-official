@@ -48,3 +48,7 @@
 17:45:37自然个人请求902086ms的502与Windows上游request_timeout/stream_incomplete902061ms对应，仍非网关120秒；原17:49模型调用超时与CH短停前发生，不能误归CH调整。继续区分上游capacity与其他上游失败。
 
 17:57 CH效果：后台任务2、5秒CPU节流1/50（原50/50），text_log parts88→25并仍推进；但新Code241持续，单次合并峰值尚待下一阶段实验，不能称已修好全部内存错误。原CID/image与新配置SHA不变，暂保持2/1，不循环重启或扩大内存。部署分支新增固定XML SHA核验，23项工具回归/source manifest通过，准备official分支交付，非原dirty整体提交。
+
+18:01首个运维续跑收尾：10个样本/无>450秒缺口、采集错误0、host OOM增量0；35个个人200/1个499/3个502，网关0排队/DB0/无ReadTimeout或落库失败。CH两个后续窗口仍有Code241，CPU和parts改善属于局部效果，不能称彻底修复。cold空闲采样256352428032（238.75GiB），18:01单次260042219520（242.18GiB）低于250GiB储备；system.parts见新6.77GB活动合并结果及待清理inactive parts，空间仍波动，未确认全部差额来源。停止进一步生产调整/大型测试及归档，观察正常旧parts回收，不手工删除或恢复高并行。
+
+正式交付分支codex/overnight-operations-20261009提交8430aa6a25ade34adb36a84af8bd555e5839c410已推official且远端一致，main431022b保持；未创建PR/未合并。新XML实际SHA与生产一致，23工具测试及sources通过。后续仅诊断单次合并block/缓冲与空间趋势；生产变更须容量门槛恢复及新候选验证。两个隔离CH测试容器停止保留，不重放。
