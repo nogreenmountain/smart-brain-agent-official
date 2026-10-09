@@ -41,3 +41,5 @@ stream:true实时转发；120秒无数据超时、1800秒绝对最长流时限�
 自然用户调用同时有gpt-6-sol失败event（HTTP200内部failed，记录502/不完整/unknown）和上游503；不是新代理ReadTimeout，个人代理日志没有新的超时或流错误。16:56本机192.168.10.146:9000实际Node代理24744、cwd CLIProxyAPI2只读核对，08:49:50Z的28665ms failed与PG28680ms对应，08:50:22Z的503/6961ms与PG7012ms对应，日志明确capacity/server_is_overloaded/service_unavailable_error。随后仍有同类上游过载。短暂客户端断开另记499，不能归于上游过载。
 
 本轮修复网关总截止与记录字段，不承诺消除供应商模型过载。未改Windows上游配置/授权/重试策略，不新增自动模型重试或跨模型替换。安全摘要 `.artifacts/personal-api-disconnect-20261009/{closeout-verified,post-release-errors,windows-upstream-errors}.json`；完整Windows日志留原位置，远端补充日志0600，不重写已归档包。
+
+17:00 official仓库新分支codex/personal-api-streaming-20261009修复提交b105937f60df956b32fc040ebe23974633c64f77远端SHA通过、main431022b保持。代理及runtime两源字节对应发布manifest；部署22项及Compose模板静态通过，单新镜像包可按delta lock验证导入，最终current21镜像通过。误推原origin的同名新分支已清理；本轮runner全终态。新机全量业务恢复和供应商过载不据此称通过。

@@ -6,6 +6,8 @@
 
 后继核对16:50：新归档SHA/OCI及current21镜像全部通过，真实GPT请求627576ms成功200/完整/实报usage，当前2执行/0等待/DB0；其他1018容器配置代际/edge双视图保持。16:56剩余failed/503实际与Windows上游capacity/server_is_overloaded逐时刻对应，没有新个人代理超时；不能称所有API error消除。未改上游授权、重试或模型选择。官方新修复分支待push收尾，所有本轮runner已终态。
 
+17:00仓库核对：[codex/personal-api-streaming-20261009](https://github.com/nogreenmountain/smart-brain-agent-official/tree/codex/personal-api-streaming-20261009)修复提交b105937f60df956b32fc040ebe23974633c64f77已push，official远端SHA一致、main431022b不变；22项部署工具及源码清单、Compose静态通过。误推旧origin的临时同名分支已清理，正式副本保持。最终记录随后追加，所有现场/测试/构建/发布/归档runner终态，旧与失败/测试容器保留，不重跑。
+
 ## 2026-10-09 14:24正式仓库分支交付
 
 核对时间：2026-10-09 14:24（Asia/Shanghai）。[源码分支](https://github.com/nogreenmountain/smart-brain-agent-official/tree/codex/current-source-20261009)363715c、[部署分支](https://github.com/nogreenmountain/smart-brain-agent-official/tree/codex/reproducible-deployment-20261009)f170d97已push并远端SHA核对，main431022b不变。入口[AI-DEPLOY](deployment/AI-DEPLOY.md)，[交付任务](tasks/2026-10-09-reproducible-repository.md)和[验收](releases/reproducible-repository-20261009.md)已镜像保存；源码继续在独立worktree及Github分支，不覆盖此工作树。
