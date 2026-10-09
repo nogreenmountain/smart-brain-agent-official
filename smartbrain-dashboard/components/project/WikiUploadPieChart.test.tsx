@@ -15,9 +15,11 @@ describe('WikiUploadPieChart', () => {
     ] });
   });
 
-  it('shows member ratios from successful wiki uploads', async () => {
+  it('shows member ratios for saved conversation uploads', async () => {
     render(<WikiUploadPieChart projectId="p1" />);
-    expect(await screen.findByText('Wiki 上传统计')).toBeInTheDocument();
+    expect(await screen.findByText('对话上传统计')).toBeInTheDocument();
+    expect(screen.getByLabelText('对话上传比例饼图')).toBeInTheDocument();
+    expect(screen.getByText('按成员统计已保存的项目对话，重试不重复计数')).toBeInTheDocument();
     const rows = screen.getAllByRole('listitem');
     expect(within(rows[0]).getByText('张三')).toBeInTheDocument();
     expect(rows[0]).toHaveTextContent('2 · 66.7%');

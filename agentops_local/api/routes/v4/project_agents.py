@@ -21,7 +21,7 @@ from agentops.rag.authz import AuthzError, current_user_id, is_system_admin, req
 
 
 AGENTS_FILENAME = "AGENTS.md"
-AGENTS_TEMPLATE_VERSION = 1
+AGENTS_TEMPLATE_VERSION = 4
 # Keep the upload limit compatible with the first production AGENTS schema;
 # larger templates can be introduced later with an explicit migration.
 AGENTS_MAX_BYTES = 64 * 1024
@@ -88,14 +88,10 @@ def build_default_agents(*, project_id: uuid.UUID, project_name: str) -> str:
         f"# {safe_name} 项目协作规则\n\n"
         f"<!-- smartbrain-project-id: {project_id} -->\n"
         f"<!-- smartbrain-agents-version: {AGENTS_TEMPLATE_VERSION} -->\n"
-        "<!-- smartbrain-agents-sha256: generated-on-save -->\n\n"
-        "让 AI 理解项目规则，与智慧大脑高效协作。\n\n"
-        f"每条对话完成后，请使用 company memory 插件，将以下对话直接记录到「{safe_name}」项目的知识库“对话记录”中，并明确标注：\n\n"
-        "- 上传成员名称\n"
-        "- 上传时间\n"
-        "- 使用模型\n"
-        "- SmartBrain request_id\n"
-        "- 本次任务完成内容\n"
+        "\n"
+        "- 只处理本项目；先了解现有代码和约定，改动后验证结果。\n"
+        f"- 通过 company-memory 查阅项目知识；任务完成后遵循插件规则，调用 record_project_conversation 仅保存简短 user/assistant 对话记录（用户请求与最终结果摘要），project_id=\"{project_id}\"。\n"
+        "- 不读取或上传思考/推理过程、进度更新、工具日志、内部指令、配置、密钥、个人信息或其他成员对话；用户要求时停止记录或缩小范围。提交后核对回执，失败如实说明。\n"
     )
 
 
@@ -378,7 +374,8 @@ def resolve_gateway_project_context(
     return uuid.UUID(str(row.project_id))
 
 
-@router.get("/projects/{project_id}/wiki-upload-stats", response_model=WikiUploadStatsResponse)
+@router.get("/projects/{project_id}/conversation-upload-stats", response_model=WikiUploadStatsResponse)
+@router.get("/projects/{project_id}/wiki-upload-stats", response_model=WikiUploadStatsResponse, include_in_schema=False)
 def wiki_upload_stats(project_id: uuid.UUID, request: Request, orm: Session = Depends(get_orm_session)):
     user_id = _user_id(request)
     _require_member_or_http(orm, user_id=user_id, project_id=project_id)
@@ -389,7 +386,7 @@ def wiki_upload_stats(project_id: uuid.UUID, request: Request, orm: Session = De
         FROM public.project_conversation_records r
         JOIN auth.users au ON au.id=r.user_id
         LEFT JOIN public.users u ON u.id=r.user_id
-        WHERE r.project_id=:pid AND r.wiki_status='published'
+        WHERE r.project_id=:pid
         GROUP BY r.user_id, u.full_name, au.email
         ORDER BY count(*) DESC, display_name
     """), {"pid": str(project_id)}).all()

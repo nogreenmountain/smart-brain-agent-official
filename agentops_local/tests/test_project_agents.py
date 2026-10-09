@@ -64,16 +64,42 @@ def test_default_agents_template_replaces_project_name_and_contains_memory_workf
 
     assert "# 材料研发 项目协作规则" in content
     assert f"smartbrain-project-id: {project_id}" in content
-    assert "company memory" in content
+    assert "company-memory" in content
     assert "对话记录" in content
-    assert "上传成员名称" in content
+    assert "user/assistant" in content
     assert f"smartbrain-agents-version: {AGENTS_TEMPLATE_VERSION}" in content
+
+
+def test_default_agents_is_short_and_keeps_only_the_essential_project_contract():
+    content = build_default_agents(project_id=uuid.uuid4(), project_name="材料研发")
+    assert len(content.encode("utf-8")) <= 1200
+    assert len(content.splitlines()) <= 12
+    assert sum(line.startswith("- ") for line in content.splitlines()) <= 3
+    assert "user/assistant" in content
+    assert "密钥" in content and "个人信息" in content
+    assert "停止记录" in content
+    assert "验证" in content
+    assert "失败" in content
 
 
 def test_agents_filename_is_strictly_case_sensitive():
     assert validate_agents_filename(AGENTS_FILENAME) is True
     for name in ("agents.md", "AGENTS.MD", "foo/AGENTS.md", "AGENTS.md.bak", None, ""):
         assert validate_agents_filename(name) is False
+
+
+def test_default_agents_uses_explicit_project_and_delegates_protocol_to_plugin():
+    pid = uuid.uuid4()
+    content = build_default_agents(project_id=pid, project_name='测试项目')
+    assert 'record_project_conversation' in content
+    assert f'project_id="{pid}"' in content
+    assert '遵循插件规则' in content
+    assert '回执' in content
+    skill = (Path(__file__).parents[2] / 'plugins/company-memory/skills/company-memory/SKILL.md').read_text(encoding='utf-8')
+    for detail in ('submission_id', 'unknown', 'published'):
+        assert detail in skill
+    assert 'SmartBrain request_id' not in content
+    assert '适配器' not in content
 
 
 def test_sha256_text_matches_standard_digest():

@@ -1,2 +1,7 @@
-*.sh text eol=lf
-*.crt text eol=lf
+deploy/current/**/*.sh text eol=lf
+deploy/current/**/*.sql text eol=lf
+deploy/current/**/*.conf text eol=lf
+deploy/current/**/*.yaml text eol=lf
+deploy/current/**/*.json text eol=lf
+deploy/current/**/*.py text eol=lf
+deploy/current/runtime-sources/** -text

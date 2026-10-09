@@ -1,41 +1,20 @@
 'use client';
 
 import { ChangeEvent, useEffect, useState } from 'react';
-import { CheckCircle2, Download, FileCode2, RefreshCw, Upload, WifiOff, Zap } from 'lucide-react';
+import { Download, FileCode2, RefreshCw, Upload } from 'lucide-react';
 import { Button } from '@/components/Button';
 import {
   downloadProjectAgents,
-  getApiBaseUrl,
   getProjectAgents,
-  getLocalProjectAdapterStatus,
   initializeProjectAgents,
   uploadProjectAgents,
   type ProjectAgentsFile,
-  type LocalProjectAdapterStatus,
 } from '@/lib/api';
-import { buildProjectAdapterLauncher } from '@/lib/projectAdapterLauncher';
 
 const DOWNLOAD_NOTICE = '请下载到对应项目文件夹，若没有项目文件夹，请新建并添加。';
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : '操作失败，请重试';
-}
-
-function saveTextFile(filename: string, content: string): void {
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-function adapterPort(projectId: string): number {
-  // Stable per project, so multiple project adapters can run concurrently.
-  let hash = 0;
-  for (const char of projectId) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return 30000 + (hash % 20000);
 }
 
 export function ProjectAgentsPanel({
@@ -53,9 +32,6 @@ export function ProjectAgentsPanel({
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [guideOpen, setGuideOpen] = useState(true);
-  const [adapterStatus, setAdapterStatus] = useState<LocalProjectAdapterStatus | null>(null);
-  const [adapterChecked, setAdapterChecked] = useState(false);
-  const localPort = adapterPort(projectId);
 
   async function reload() {
     setLoading(true);
@@ -71,8 +47,6 @@ export function ProjectAgentsPanel({
 
   useEffect(() => {
     setGuideOpen(true);
-    setAdapterStatus(null);
-    setAdapterChecked(false);
     void reload();
     // A project page mount is the boundary at which the workflow is shown.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -147,36 +121,6 @@ export function ProjectAgentsPanel({
     }
   }
 
-  async function checkAdapter() {
-    setBusy(true);
-    setError('');
-    setAdapterChecked(true);
-    try {
-      const status = await getLocalProjectAdapterStatus(localPort);
-      if (status.project_id !== projectId) {
-        setAdapterStatus(null);
-        setError(`本机 ${localPort} 端口当前绑定的是其他项目，请启动本项目专用适配器`);
-        return;
-      }
-      setAdapterStatus(status);
-      setNotice('本项目适配器已连接；令牌会在后台自动获取、续期并随请求携带');
-    } catch (nextError) {
-      setAdapterStatus(null);
-      setError('本机适配器未连接。请先按下方命令启动本项目专用适配器');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function downloadOneClickLauncher() {
-    const adapterDownloadUrl = typeof window === 'undefined'
-      ? `${getApiBaseUrl()}/downloads/smartbrain_codex_adapter.py`
-      : `${window.location.origin}/downloads/smartbrain_codex_adapter.py`;
-    const files = buildProjectAdapterLauncher({ apiBaseUrl: getApiBaseUrl(), adapterDownloadUrl, projectId, port: localPort });
-    saveTextFile('Start-SmartBrain-Codex-Project.cmd', files.cmd);
-    setNotice('已下载一键启动器，双击即可；如果文件不在项目目录，启动器会自动弹出项目文件夹选择');
-  }
-
   return (
     <section aria-labelledby="project-agents-heading" className="rounded-lg border border-[#d7e0ec] bg-white p-5 shadow-sm">
       {guideOpen && (
@@ -185,9 +129,9 @@ export function ProjectAgentsPanel({
           <ol className="mt-2 space-y-1 text-sm leading-6 text-blue-900">
             <li>1. 创建项目文件夹。</li>
             <li>2. 打开智慧大脑，项目负责人编辑修改 AGENTS.md，界定项目规则和项目细节等需要项目成员共同规范的 AI 使用过程。</li>
-            <li>3. 安装并启动本项目专用的 SmartBrain 桌面适配器；它会读取 AGENTS.md，并自动获取、续期项目令牌。</li>
-            <li>4. 进入 CODEX 或 CLAUDE 创建项目，并选中刚创建的项目文件夹，让 AGENTS.md 被项目读到并完成初始化。</li>
-            <li>5. 在请求中不需要写提示词或手工添加请求头；适配器会自动携带本项目令牌。同一台电脑可以为多个项目分别启动适配器。</li>
+            <li>3. 下载 AGENTS.md 到项目文件夹，在 Codex 中打开该文件夹并读取项目规则。</li>
+            <li>4. 连接 company-memory 插件，确认当前账号具备该项目的写入权限。</li>
+            <li>5. 完成任务后，让 AI 按 AGENTS.md 调用 record_project_conversation 仅提交简短的用户请求和最终结果摘要，不含思考过程、进度或工具日志；核对回执中的项目、上传成员和保存状态。</li>
           </ol>
           <Button className="mt-3" size="sm" onClick={() => setGuideOpen(false)}>开始使用</Button>
         </div>
@@ -213,20 +157,11 @@ export function ProjectAgentsPanel({
               <input aria-label="上传 AGENTS.md" type="file" accept=".md,text/markdown" className="sr-only" onChange={handleUpload} disabled={busy} />
             </label>}
             <Button size="sm" variant="secondary" onClick={handleDownload} disabled={busy}><Download size={15} aria-hidden="true" />下载</Button>
-            <Button size="sm" variant="secondary" onClick={checkAdapter} disabled={busy}>
-              {adapterStatus ? <CheckCircle2 size={15} aria-hidden="true" /> : <WifiOff size={15} aria-hidden="true" />}
-              {adapterStatus ? '适配器已连接' : '检测本机适配器'}
-            </Button>
-            <Button size="sm" variant="secondary" onClick={downloadOneClickLauncher} disabled={busy}><Zap size={15} aria-hidden="true" />下载一键启动器</Button>
           </div>
           <div className="mt-4 rounded-lg border border-[#d7e0ec] bg-[#f7f9fc] p-3 text-xs leading-5 text-[#50627b]">
-            <p className="font-semibold text-[#10213e]">本项目桌面适配器</p>
-            <p className="mt-1">专用端口：{localPort} · {adapterChecked ? (adapterStatus ? '已连接' : '未连接') : '尚未检测'}</p>
-            <p className="mt-1">在包含两个适配器脚本的目录执行（启动脚本会提示输入 API Key）：</p>
-            <p className="mt-1"><a className="text-brand-700 underline" href="/downloads/smartbrain_codex_adapter.py" download>下载 Python 适配器</a> · <a className="text-brand-700 underline" href="/downloads/Start-SmartBrainCodexAdapter.ps1" download>下载 PowerShell 启动脚本</a></p>
-            <code className="mt-1 block break-all rounded bg-white p-2 text-[11px]">powershell -ExecutionPolicy Bypass -File .\Start-SmartBrainCodexAdapter.ps1 -ApiBaseUrl &quot;{getApiBaseUrl()}&quot; -ProjectDir . -ListenPort {localPort}</code>
-            <p className="mt-2">然后把 Codex 的项目 Provider 地址设置为 <code>http://127.0.0.1:{localPort}/v1</code>。适配器只在内存和本机缓存中保存短期令牌，不要求把令牌写进提示词。</p>
-            <p className="mt-1">PowerShell 启动脚本未传入 <code>-ApiKey</code> 时会现场提示输入，密钥不会写入项目文件。</p>
+            <p className="font-semibold text-[#10213e]">项目记录方式：AGENTS.md + company-memory</p>
+            <p className="mt-1">上传身份和时间由服务端确定；只提交授权选定的内容，不保证自动记录每次模型请求。成功保存后仍需核对 Wiki 是否已发布。</p>
+            <p className="mt-1">已有 AGENTS.md 不会自动覆盖。负责人请确认文件包含项目 UUID 和插件提交规则，更新后再分发给成员。</p>
           </div>
         </>
       )}

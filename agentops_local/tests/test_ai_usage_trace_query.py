@@ -266,6 +266,54 @@ class AIUsageTraceQueryTests(unittest.TestCase):
         assert [message.role for message in result[0].messages] == ["user"]
         assert [message.content for message in result[0].messages] == ["visible"]
 
+    def test_attach_messages_removes_environment_context_and_keeps_conversation_text(self) -> None:
+        orm = _MessageResultOrm([
+            SimpleNamespace(
+                session_id="00000000-0000-0000-0000-000000000010",
+                role="user",
+                content="<environment_context>\n  <cwd>C:\\Users\\tangvx</cwd>\n</environment_context>\n\n**用户**\n能用吗现在，测试",
+                token_count=None,
+                created_at=None,
+            ),
+            SimpleNamespace(
+                session_id="00000000-0000-0000-0000-000000000010",
+                role="assistant",
+                content="**AI**\n可以，当前连接和工具都正常。",
+                token_count=None,
+                created_at=None,
+            ),
+        ])
+        record = route.UsageRecord(
+            id="00000000-0000-0000-0000-000000000010",
+            record_type="chat",
+            project_id="project",
+            project_name="Project",
+            employee_id="employee",
+            employee_name="Employee",
+            source="chatgpt_web",
+            title="Conversation",
+            started_at=datetime(2026, 8, 17, 4, 0, tzinfo=timezone.utc),
+        )
+
+        result = route._attach_messages(orm, [record])
+
+        assert [(message.role, message.content) for message in result[0].messages] == [
+            ("user", "能用吗现在，测试"),
+            ("assistant", "可以，当前连接和工具都正常。"),
+        ]
+
+
+class _MessageResultOrm(_CapturingOrm):
+    def __init__(self, rows):
+        super().__init__()
+        self._rows = rows
+
+    def execute(self, statement, parameters=None):
+        self.sql = str(statement)
+        self.parameters = parameters or {}
+        rows = self._rows
+        return type("Result", (), {"all": lambda _result: rows})()
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -120,6 +120,14 @@ describe('WorkdayPage', () => {
     expect(screen.getByRole('button', { name: '同步本机 CC Switch' })).toBeInTheDocument();
   });
 
+  it('leaves vertical scrolling to the workspace panel when embedded', async () => {
+    render(<WorkdayPage embedded />);
+
+    const main = await screen.findByRole('main');
+    expect(main).toHaveClass('overflow-visible');
+    expect(main).not.toHaveClass('overflow-y-auto');
+  });
+
   it('gives daily token columns a full-height plotting area', async () => {
     render(<WorkdayPage />);
 

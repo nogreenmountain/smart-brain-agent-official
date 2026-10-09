@@ -1,10 +1,14 @@
 export const CODEX_PLUGIN_BUNDLE_PATH = '/downloads/smartbrain-company-memory-codex.zip';
+export const CODEX_PLUGIN_VERSION = '0.2.1+codex.20261008';
+export const CODEX_UPDATER_PATH = '/downloads/SmartBrain-Company-Memory-Update.ps1';
+const CODEX_UPDATER_SHA256 = 'a29dbf9f42c2d87f4fe7e4f5457d02997a9433ab3aa2b1191d81ad166219a2f7';
 
-interface CodexInstallerOptions {
+interface CodexUpdaterOptions {
   endpoint: string;
-  token: string;
   bundleUrl: string;
+  updaterUrl?: string;
 }
+interface CodexInstallerOptions extends CodexUpdaterOptions { token: string; }
 
 function requireHttpUrl(value: string, label: string): string {
   let parsed: URL;
@@ -13,7 +17,7 @@ function requireHttpUrl(value: string, label: string): string {
   } catch {
     throw new Error(`${label} is invalid`);
   }
-  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+  if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || parsed.username || parsed.password) {
     throw new Error(`${label} must use HTTP or HTTPS`);
   }
   return parsed.toString();
@@ -32,10 +36,11 @@ function encodeUtf16Le(value: string): string {
   return btoa(binary);
 }
 
-export function buildCodexInstaller({ endpoint, token, bundleUrl }: CodexInstallerOptions): string {
+function buildCommand({ endpoint, bundleUrl, updaterUrl }: CodexUpdaterOptions, token?: string): string {
   const safeEndpoint = requireHttpUrl(endpoint, 'MCP endpoint');
   const safeBundleUrl = requireHttpUrl(bundleUrl, 'Plugin bundle URL');
-  if (!/^sbmcp_[A-Za-z0-9._~-]+$/.test(token)) {
+  const safeUpdaterUrl = requireHttpUrl(updaterUrl || new URL(CODEX_UPDATER_PATH, safeBundleUrl).toString(), 'Updater URL');
+  if (token !== undefined && !/^sbmcp_[A-Za-z0-9._~-]+$/.test(token)) {
     throw new Error('MCP token is invalid');
   }
 
@@ -43,34 +48,16 @@ export function buildCodexInstaller({ endpoint, token, bundleUrl }: CodexInstall
     "$ErrorActionPreference='Stop'",
     'try {',
     "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)",
+    "Import-Module (Join-Path $PSHOME 'Modules\\Microsoft.PowerShell.Utility\\Microsoft.PowerShell.Utility.psd1') -Force",
     `$endpoint=${quotePowerShell(safeEndpoint)}`,
-    `$token=${quotePowerShell(token)}`,
     `$bundle=${quotePowerShell(safeBundleUrl)}`,
-    "$root=Join-Path $env:LOCALAPPDATA 'SmartBrain\\CodexPluginMarketplace'",
-    "$zip=Join-Path $env:TEMP 'smartbrain-company-memory-codex.zip'",
-    'if(Test-Path -LiteralPath $root){Remove-Item -LiteralPath $root -Recurse -Force}',
-    'New-Item -ItemType Directory -Path $root -Force|Out-Null',
-    'Invoke-WebRequest -Uri $bundle -OutFile $zip -UseBasicParsing',
-    'Expand-Archive -LiteralPath $zip -DestinationPath $root -Force',
-    'Remove-Item -LiteralPath $zip -Force',
-    "$manifest=Join-Path $root 'plugins\\company-memory\\.codex-plugin\\plugin.json'",
-    '$plugin=Get-Content -LiteralPath $manifest -Raw -Encoding UTF8|ConvertFrom-Json',
-    "$plugin.mcpServers.'smartbrain-company-memory'.url=$endpoint",
-    '$config=$plugin|ConvertTo-Json -Depth 8',
-    '[IO.File]::WriteAllText($manifest,$config,[Text.UTF8Encoding]::new($false))',
-    "[Environment]::SetEnvironmentVariable('SMARTBRAIN_WIKI_MCP_TOKEN',$token,'User')",
-    "if([Environment]::GetEnvironmentVariable('SMARTBRAIN_WIKI_MCP_TOKEN','User') -ne $token){throw 'Failed to persist the SmartBrain MCP token.'}",
-    '$env:SMARTBRAIN_WIKI_MCP_TOKEN=$token',
-    '$codex=(Get-Command codex.cmd -ErrorAction SilentlyContinue).Source',
-    'if(!$codex){$codex=(Get-Command codex.exe -ErrorAction SilentlyContinue).Source}',
-    "if(!$codex){throw 'Codex CLI is not installed or is not in PATH.'}",
-    "$marketplaces=(& $codex plugin marketplace list --json|ConvertFrom-Json).marketplaces",
-    "if($marketplaces.name -contains 'smartbrain'){& $codex plugin marketplace remove smartbrain --json|Out-Null;if($LASTEXITCODE -ne 0){throw 'Failed to remove the previous SmartBrain plugin marketplace.'}}",
-    '& $codex plugin marketplace add $root',
-    "if($LASTEXITCODE -ne 0){throw 'Failed to add the SmartBrain plugin marketplace.'}",
-    "& $codex plugin add 'company-memory@smartbrain'",
-    "if($LASTEXITCODE -ne 0){throw 'Failed to install the company-memory plugin.'}",
-    "Write-Host 'SmartBrain Company Memory installed. Completely exit Codex and ChatGPT, reopen the app, then start a new task.' -ForegroundColor Green",
+    `$updater=${quotePowerShell(safeUpdaterUrl)}`,
+    "$scriptFile=Join-Path $env:TEMP ('smartbrain-update-'+[Guid]::NewGuid().ToString('N')+'.ps1')",
+    '[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12',
+    "Invoke-WebRequest -Uri $updater -OutFile $scriptFile -UseBasicParsing -Headers @{'Cache-Control'='no-cache'}",
+    `if((Get-FileHash -LiteralPath $scriptFile -Algorithm SHA256).Hash.ToLowerInvariant() -ne '${CODEX_UPDATER_SHA256}'){throw 'Updater integrity check failed.'}`,
+    `& $scriptFile -Endpoint $endpoint -BundleUrl $bundle${token === undefined ? '' : ` -Token ${quotePowerShell(token)}`}`,
+    'Remove-Item -LiteralPath $scriptFile -Force',
     "Read-Host 'Press Enter to close'|Out-Null",
     'exit 0',
     '} catch {',
@@ -97,13 +84,28 @@ export function buildCodexInstaller({ endpoint, token, bundleUrl }: CodexInstall
   return commandFile;
 }
 
-export function downloadCodexInstaller(options: CodexInstallerOptions): void {
-  const content = buildCodexInstaller(options);
+export function buildCodexInstaller(options: CodexInstallerOptions): string {
+  return buildCommand(options, options.token);
+}
+
+export function buildCodexUpdater(options: CodexUpdaterOptions): string {
+  return buildCommand(options);
+}
+
+function downloadCommand(content: string, filename: string): void {
   const blob = new Blob([content], { type: 'application/x-msdos-program;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = 'SmartBrain-Company-Memory-Setup.cmd';
+  anchor.download = filename;
   anchor.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+export function downloadCodexInstaller(options: CodexInstallerOptions): void {
+  downloadCommand(buildCodexInstaller(options), 'SmartBrain-Company-Memory-Setup.cmd');
+}
+
+export function downloadCodexUpdater(options: CodexUpdaterOptions): void {
+  downloadCommand(buildCodexUpdater(options), 'SmartBrain-Company-Memory-Update.cmd');
 }

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
 
-import { buildCodexInstaller } from './codex-plugin-installer';
+import { buildCodexInstaller, buildCodexUpdater } from './codex-plugin-installer';
 
 function decodePowerShell(commandFile: string): string {
   const match = commandFile.match(/-EncodedCommand ([A-Za-z0-9+/=]+)/);
@@ -9,6 +11,20 @@ function decodePowerShell(commandFile: string): string {
 }
 
 describe('buildCodexInstaller', () => {
+  it('offers an updater that needs no new token and keeps the existing credential', () => {
+    const commandFile = buildCodexUpdater({
+      endpoint: 'https://39.105.79.0/mcp',
+      bundleUrl: 'https://39.105.79.0/downloads/smartbrain-company-memory-codex.zip',
+      updaterUrl: 'https://39.105.79.0/downloads/SmartBrain-Company-Memory-Update.ps1',
+    });
+    const script = decodePowerShell(commandFile);
+    expect(commandFile.length).toBeLessThan(8000);
+    expect(script).toContain('Get-FileHash');
+    expect(script).toContain('SmartBrain-Company-Memory-Update.ps1');
+    expect(script).not.toContain('sbmcp_');
+    expect(script).not.toContain('-Token');
+    expect(script).not.toContain('SetEnvironmentVariable');
+  });
   it('creates a self-deleting Windows installer for the complete SmartBrain plugin', () => {
     const commandFile = buildCodexInstaller({
       endpoint: 'http://192.168.1.40:8010/mcp',
@@ -21,20 +37,13 @@ describe('buildCodexInstaller', () => {
     expect(commandFile.length).toBeLessThan(8000);
 
     const script = decodePowerShell(commandFile);
-    expect(script).toContain('SMARTBRAIN_WIKI_MCP_TOKEN');
     expect(script).toContain('sbmcp_visible_once');
     expect(script).toContain('http://192.168.1.40:8010/mcp');
-    expect(script).toContain("$manifest=Join-Path $root 'plugins\\company-memory\\.codex-plugin\\plugin.json'");
-    expect(script).toContain("$plugin.mcpServers.'smartbrain-company-memory'.url=$endpoint");
-    expect(script).not.toContain("plugins\\company-memory\\.mcp.json");
-    expect(script).toContain("GetEnvironmentVariable('SMARTBRAIN_WIKI_MCP_TOKEN','User')");
-    expect(script).toContain('Completely exit Codex and ChatGPT');
     expect(script).toContain('smartbrain-company-memory-codex.zip');
-    expect(script).toContain('plugin marketplace list --json');
-    expect(script).toContain("$marketplaces.name -contains 'smartbrain'");
-    expect(script).toContain('plugin marketplace add');
-    expect(script).toContain('plugin add');
-    expect(script).toContain('company-memory@smartbrain');
+    expect(script).toContain('-Token');
+    const updater = readFileSync('public/downloads/SmartBrain-Company-Memory-Update.ps1');
+    expect(script).toContain(createHash('sha256').update(updater).digest('hex'));
+    expect(script).not.toContain('Remove-Item -LiteralPath $root -Recurse');
   });
 
   it('rejects unsafe endpoints and invalid token values', () => {

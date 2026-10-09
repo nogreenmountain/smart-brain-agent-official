@@ -1,0 +1,3869 @@
+from __future__ import annotations
+
+import json
+import hashlib
+import logging
+import secrets
+import uuid
+from dataclasses import asdict, replace
+from datetime import date, datetime, timedelta, timezone
+from typing import Any, Literal
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from agentops.ai_usage.access import (
+    UsageAccessError,
+    is_employee_account_email,
+    resolve_employee_scope,
+    validate_date_range,
+)
+from agentops.ai_usage.domain import (
+    AuthoritativeUsageDaily,
+    UsageMessage,
+    UsageRecord,
+    UsageSummary,
+    build_usage_summary,
+    build_usage_summary_with_authoritative_source,
+    cc_switch_total_tokens,
+)
+from agentops.ai_usage.reporting import (
+    build_report_prompt, generate_usage_report, report_context_is_truncated,
+    report_quality_notices,
+)
+from agentops.ai_usage import daily_access, chat_access, gateway_content, gateway_tokens
+from agentops.api.db.clickhouse_client import get_clickhouse
+from agentops.auth.middleware import AuthenticatedRoute
+from agentops.common.orm import get_orm_session
+from agentops.common import response_cache
+from agentops import ingest_queue
+from agentops.rag.audit import record_audit, schedule_deduplicated_audit
+from agentops.rag.authz import AuthzError, current_user_id, is_system_admin, require_member
+from agentops.workday.domain import business_day_utc_bounds
+from agentops.workday.identity import derive_employee_identity
+from agentops.api.routes.v4.ai_chat import _device_claims
+
+
+class PrivateDailyUsageRoute(AuthenticatedRoute):
+    def get_route_handler(self):
+        handler=super().get_route_handler()
+        if self.endpoint.__name__ not in ('get_ai_daily_work_logs','get_ai_daily_worklog_options',
+                'get_ai_usage_options','get_ai_usage_records','create_ai_usage_report','get_ai_usage_leaderboard',
+                'get_gateway_request_content'):
+            return handler
+
+        async def private_handler(request):
+            headers={'Cache-Control':'no-store','Pragma':'no-cache'}
+            try:
+                response=await handler(request)
+            except daily_access.DailyAccessError as error:
+                raise HTTPException(status_code=error.status_code,detail=error.detail,headers=headers) from error
+            except HTTPException as error:
+                error.headers={**(error.headers or {}),**headers}
+                raise
+            except RequestValidationError as error:
+                return JSONResponse(status_code=422,content={'detail':jsonable_encoder(error.errors())},headers=headers)
+            except Exception as error:
+                # SQL/model exception strings can contain private parameters.
+                logger.error('Private AI usage request failed (%s)',type(error).__name__)
+                return JSONResponse(status_code=500,content={'detail':'Private AI usage request failed'},headers=headers)
+            response.headers.update(headers)
+            return response
+
+        return private_handler
+
+
+router = APIRouter(route_class=PrivateDailyUsageRoute)
+device_router = APIRouter()
+logger = logging.getLogger(__name__)
+
+AIUsageSource = Literal[
+    "cc_switch",
+    "ai_gateway",
+    "chatgpt_web",
+    "chatgpt_desktop",
+    "openai_compliance",
+    "smartbrain",
+]
+AIUsageMode = Literal["self", "admin", "statistics"]
+
+CONVERSATION_SYNC_GRACE_PERIOD = timedelta(minutes=15)
+SHANGHAI_TIMEZONE = timezone(timedelta(hours=8))
+SHARED_SESSION_ACTIVATION_TTL = timedelta(minutes=10)
+SHARED_SESSION_MIN_DURATION = timedelta(minutes=5)
+SHARED_SESSION_MAX_DURATION = timedelta(hours=24)
+TEMPORARY_MONITOR_PROBE_TTL = timedelta(minutes=5)
+TEMPORARY_MONITOR_PROBE_DETECTION_MAX_AGE = timedelta(minutes=10)
+USAGE_OPTIONS_CACHE_TTL_SECONDS = 300
+DAILY_LOG_CACHE_TTL_SECONDS = 30
+ZERO_UUID = uuid.UUID(int=0)
+
+DEPARTMENTS = (
+    ("research", "研发"),
+    ("marketing", "市场"),
+    ("business", "业务"),
+)
+
+
+def _refresh_leaderboard_days(orm: Session, usage_dates: list[date]) -> None:
+    if not usage_dates:
+        return
+    orm.execute(
+        text("SELECT public.refresh_ai_usage_leaderboard_daily(CAST(:dates AS date[]))"),
+        {"dates": sorted(set(usage_dates))},
+    )
+
+
+def _cc_switch_usage_signature(
+    *,
+    project_id,
+    employee_id,
+    employee_name,
+    usage_date,
+    app_type,
+    provider_id,
+    model,
+    request_model,
+    pricing_model,
+    request_count,
+    success_count,
+    input_tokens,
+    output_tokens,
+    cache_read_tokens,
+    cache_creation_tokens,
+    total_tokens,
+    total_cost_usd,
+    input_token_semantics,
+    source_table,
+) -> tuple:
+    return (
+        str(project_id or ""),
+        str(employee_id or ""),
+        str(employee_name or ""),
+        usage_date,
+        str(app_type or ""),
+        str(provider_id or ""),
+        str(model or ""),
+        str(request_model or ""),
+        str(pricing_model or ""),
+        int(request_count or 0),
+        int(success_count or 0),
+        int(input_tokens or 0),
+        int(output_tokens or 0),
+        int(cache_read_tokens or 0),
+        int(cache_creation_tokens or 0),
+        int(total_tokens or 0),
+        round(float(total_cost_usd or 0), 12),
+        int(input_token_semantics or 0),
+        str(source_table or ""),
+    )
+
+
+def _protocol_v2_changed_dates(
+    orm: Session,
+    *,
+    body,
+    user_id: uuid.UUID,
+    employee_id: str,
+    employee_name: str,
+    normalized_rows: list[tuple],
+) -> list[date]:
+    stored_rows = orm.execute(
+        text("""
+            SELECT project_id, employee_id, employee_name,
+                   usage_date, app_type, provider_id, model,
+                   request_model, pricing_model,
+                   request_count, success_count,
+                   input_tokens, output_tokens,
+                   cache_read_tokens, cache_creation_tokens,
+                   total_tokens, total_cost_usd,
+                   input_token_semantics, source_table
+            FROM public.cc_switch_usage_daily
+            WHERE user_id = :user_id AND device_id = :device_id
+              AND usage_date BETWEEN :range_start AND :range_end
+            ORDER BY usage_date, app_type, provider_id, model,
+                     request_model, pricing_model
+        """),
+        {
+            "user_id": str(user_id),
+            "device_id": body.device_id,
+            "range_start": body.range_start,
+            "range_end": body.range_end,
+        },
+    ).all()
+    stored_by_date: dict[date, list[tuple]] = {}
+    for row in stored_rows:
+        stored_by_date.setdefault(row.usage_date, []).append(
+            _cc_switch_usage_signature(
+                project_id=row.project_id,
+                employee_id=row.employee_id,
+                employee_name=row.employee_name,
+                usage_date=row.usage_date,
+                app_type=row.app_type,
+                provider_id=row.provider_id,
+                model=row.model,
+                request_model=row.request_model,
+                pricing_model=row.pricing_model,
+                request_count=row.request_count,
+                success_count=row.success_count,
+                input_tokens=row.input_tokens,
+                output_tokens=row.output_tokens,
+                cache_read_tokens=row.cache_read_tokens,
+                cache_creation_tokens=row.cache_creation_tokens,
+                total_tokens=row.total_tokens,
+                total_cost_usd=row.total_cost_usd,
+                input_token_semantics=row.input_token_semantics,
+                source_table=row.source_table,
+            )
+        )
+    incoming_by_date: dict[date, list[tuple]] = {}
+    for row, total_tokens in normalized_rows:
+        incoming_by_date.setdefault(row.usage_date, []).append(
+            _cc_switch_usage_signature(
+                project_id=body.project_id,
+                employee_id=employee_id,
+                employee_name=employee_name,
+                usage_date=row.usage_date,
+                app_type=row.app_type,
+                provider_id=row.provider_id,
+                model=row.model,
+                request_model=row.request_model,
+                pricing_model=row.pricing_model,
+                request_count=row.request_count,
+                success_count=row.success_count,
+                input_tokens=row.input_tokens,
+                output_tokens=row.output_tokens,
+                cache_read_tokens=row.cache_read_tokens,
+                cache_creation_tokens=row.cache_creation_tokens,
+                total_tokens=total_tokens,
+                total_cost_usd=row.total_cost_usd,
+                input_token_semantics=row.input_token_semantics,
+                source_table=body.source_table,
+            )
+        )
+    candidate_dates = set(stored_by_date) | set(incoming_by_date)
+    return sorted(
+        usage_date
+        for usage_date in candidate_dates
+        if sorted(stored_by_date.get(usage_date, []))
+        != sorted(incoming_by_date.get(usage_date, []))
+    )
+
+
+def _ingest_order_key(
+    accepted_at: datetime | None,
+    receipt_id: uuid.UUID | str | None,
+) -> tuple[datetime, int] | None:
+    if accepted_at is None:
+        return None
+    normalized_id = ZERO_UUID if receipt_id is None else uuid.UUID(str(receipt_id))
+    return accepted_at, normalized_id.int
+
+
+def _is_newer_ingest_order(
+    *,
+    incoming_at: datetime,
+    incoming_id: uuid.UUID,
+    existing_at: datetime | None,
+    existing_id: uuid.UUID | str | None,
+) -> bool:
+    existing_key = _ingest_order_key(existing_at, existing_id)
+    return existing_key is None or (incoming_at, incoming_id.int) > existing_key
+
+
+def _resolve_ingest_order(
+    orm: Session,
+    request: Request,
+    *,
+    direct_attempted_at: datetime,
+    request_id: uuid.UUID | None,
+) -> tuple[datetime, uuid.UUID]:
+    request_state = getattr(request, "state", None)
+    receipt_id = getattr(request_state, "ingest_receipt_id", None)
+    if receipt_id is None:
+        return direct_attempted_at, request_id or ZERO_UUID
+
+    normalized_receipt_id = uuid.UUID(str(receipt_id))
+    receipt = orm.execute(
+        text("""
+            SELECT accepted_at
+            FROM public.ingest_queue_receipts
+            WHERE id = :receipt_id
+        """),
+        {"receipt_id": str(normalized_receipt_id)},
+    ).first()
+    if receipt is None:
+        raise RuntimeError(f"ingest receipt is missing: {normalized_receipt_id}")
+    return receipt.accepted_at, normalized_receipt_id
+
+
+class UsageDepartmentOption(BaseModel):
+    id: str
+    name: str
+
+
+class UsageProjectOption(BaseModel):
+    id: uuid.UUID
+    name: str
+    department_id: str
+
+
+class UsageEmployeeOption(BaseModel):
+    id: str
+    user_id: uuid.UUID | None = None
+    name: str
+    email: str
+    project_ids: list[uuid.UUID] = Field(default_factory=list)
+    detail_visible_to_admin: bool = False
+
+
+class UsageOptionsResponse(BaseModel):
+    mode: AIUsageMode
+    current_employee: UsageEmployeeOption
+    departments: list[UsageDepartmentOption]
+    projects: list[UsageProjectOption]
+    employees: list[UsageEmployeeOption]
+
+
+class UsageMessageResponse(BaseModel):
+    role: str
+    content: str
+    token_count: int | None = None
+    created_at: datetime | None = None
+    message_id: str | None = None
+    metadata: dict[str, Any] | None = None
+
+
+class UsageRecordResponse(BaseModel):
+    id: str
+    record_type: Literal["chat", "trace", "gateway"]
+    project_id: uuid.UUID
+    project_name: str
+    employee_id: str
+    employee_name: str
+    owner_user_id: uuid.UUID | None = None
+    usage_missing: bool = False
+    usage_date: date | None = None
+    request_id: uuid.UUID | None = None
+    gateway_instance_id: str | None = None
+    key_id: uuid.UUID | None = None
+    conversation_id: str | None = None
+    content_complete: bool | None = None
+    context_source: str | None = None
+    request_message_count: int | None = None
+    status_code: int | None = None
+    source: str
+    title: str
+    started_at: datetime
+    ended_at: datetime | None = None
+    task_id: str
+    task_title: str | None = None
+    model: str | None = None
+    status: str
+    duration_ms: int | None = None
+    prompt_tokens: int | None
+    completion_tokens: int | None
+    total_tokens: int | None
+    cost: float
+    error_count: int
+    trace_id: str | None = None
+    message_count: int
+    messages: list[UsageMessageResponse] | None = None
+    messages_truncated: bool = False
+    fresh_input_tokens: int | None = None
+    total_input_tokens: int | None = None
+    cache_read_tokens: int | None = None
+    cache_creation_tokens: int | None = None
+    reasoning_tokens: int | None = None
+    input_token_semantics: int | None = None
+
+
+class UsageDailyPoint(BaseModel):
+    date: date
+    record_count: int
+    total_tokens: int
+    prompt_tokens: int
+    completion_tokens: int
+    error_count: int
+    usage_missing_count: int = 0
+
+
+class UsageHourlyPoint(BaseModel):
+    hour: int
+    record_count: int
+    total_tokens: int
+
+
+class UsageSourcePoint(BaseModel):
+    source: str
+    record_count: int
+    total_tokens: int
+
+
+class UsageSummaryResponse(BaseModel):
+    start_date: date
+    end_date: date
+    period_days: int
+    active_days: int
+    record_count: int
+    total_tokens: int
+    prompt_tokens: int
+    completion_tokens: int
+    average_tokens_per_day: float
+    error_count: int
+    total_cost: float
+    daily_usage: list[UsageDailyPoint]
+    hourly_usage: list[UsageHourlyPoint]
+    source_usage: list[UsageSourcePoint]
+    usage_missing_count: int = 0
+    token_totals_complete: bool = True
+
+
+class UsageLeaderboardMember(BaseModel):
+    rank: int
+    owner_user_id: uuid.UUID
+    employee_id: str
+    employee_name: str
+    account: str
+    total_tokens: int
+    request_count: int
+    active_days: int
+    average_tokens_per_day: float | None
+    average_tokens_per_request: float | None
+    share_percent: float | None
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int
+    cache_creation_tokens: int
+    error_count: int
+    total_cost: float
+    official_cc_switch: bool
+    usage_missing_count: int = 0
+    token_totals_complete: bool = True
+
+
+class UsageLeaderboardDailyPoint(BaseModel):
+    date: date
+    total_tokens: int
+    request_count: int
+    active_users: int
+    usage_missing_count: int = 0
+    token_totals_complete: bool = True
+
+
+class UsageLeaderboardDistributionPoint(BaseModel):
+    key: str
+    label: str
+    total_tokens: int
+    request_count: int
+    percentage: float
+    usage_missing_count: int = 0
+
+
+class UsageLeaderboardResponse(BaseModel):
+    start_date: date
+    end_date: date
+    period_days: int
+    timezone: Literal["Asia/Shanghai"] = "Asia/Shanghai"
+    total_tokens: int
+    request_count: int
+    active_users: int
+    active_days: int
+    average_tokens_per_user: float | None
+    official_cc_switch_users: int
+    usage_missing_count: int = 0
+    token_totals_complete: bool = True
+    members: list[UsageLeaderboardMember]
+    daily_usage: list[UsageLeaderboardDailyPoint]
+    source_usage: list[UsageLeaderboardDistributionPoint]
+    app_usage: list[UsageLeaderboardDistributionPoint]
+    token_usage: list[UsageLeaderboardDistributionPoint]
+    model_usage: list[UsageLeaderboardDistributionPoint]
+    warnings: list[str] = Field(default_factory=list)
+    privacy_notice: str = "仅展示聚合统计，不包含对话、Prompt、回复或个人工作日志。"
+
+
+class UsageQueryResponse(BaseModel):
+    mode: AIUsageMode
+    employee: UsageEmployeeOption
+    projects: list[UsageProjectOption]
+    timezone: Literal["Asia/Shanghai"] = "Asia/Shanghai"
+    summary: UsageSummaryResponse
+    records: list[UsageRecordResponse]
+    has_more: bool
+    warnings: list[str]
+    detail_visible: bool = True
+
+
+class CCSwitchUsageRowInput(BaseModel):
+    usage_date: date
+    app_type: str = Field(..., min_length=1, max_length=40)
+    provider_id: str = Field(..., min_length=1, max_length=200)
+    model: str = Field(..., min_length=1, max_length=200)
+    request_model: str = Field("", max_length=200)
+    pricing_model: str = Field("", max_length=200)
+    request_count: int = Field(0, ge=0)
+    success_count: int = Field(0, ge=0)
+    input_tokens: int = Field(0, ge=0)
+    output_tokens: int = Field(0, ge=0)
+    cache_read_tokens: int = Field(0, ge=0)
+    cache_creation_tokens: int = Field(0, ge=0)
+    total_tokens: int = Field(0, ge=0)
+    total_cost_usd: float = Field(0, ge=0)
+    input_token_semantics: int = Field(0, ge=0)
+
+
+class CCSwitchUsageSyncRequest(BaseModel):
+    project_id: uuid.UUID
+    device_id: str = Field(..., min_length=1, max_length=200)
+    sync_protocol_version: int = Field(1, ge=1)
+    trigger: Literal["automatic", "manual"] = "automatic"
+    request_id: uuid.UUID | None = None
+    range_start: date
+    range_end: date
+    attempted_at: datetime
+    cc_switch_running: bool
+    status: Literal["ok", "not_running", "error"]
+    source_table: Literal["usage_daily_rollups", "proxy_request_logs"] | None = None
+    changed_dates: list[date] = Field(default_factory=list, max_length=3660)
+    rows: list[CCSwitchUsageRowInput] = Field(default_factory=list, max_length=5000)
+    request_count: int = Field(0, ge=0)
+    success_count: int = Field(0, ge=0)
+    total_tokens: int = Field(0, ge=0)
+    error_message: str | None = Field(None, max_length=1000)
+
+
+class CCSwitchUsageSyncResponse(BaseModel):
+    delivery_status: Literal["accepted", "synced"] = "synced"
+    receipt_id: uuid.UUID | None = None
+    status: Literal["ok", "not_running", "error"]
+    employee_id: str
+    employee_name: str
+    device_id: str
+    trigger: Literal["automatic", "manual"]
+    request_id: uuid.UUID | None = None
+    range_start: date
+    range_end: date
+    row_count: int
+    request_count: int
+    total_tokens: int
+    attempted_at: datetime
+    synced_at: datetime | None = None
+    error_message: str | None = None
+
+
+SharedSessionStopMode = Literal["default_19", "custom", "manual_only"]
+SharedSessionStatus = Literal[
+    "starting",
+    "active",
+    "finalizing",
+    "pending_sync",
+    "finalized",
+    "cancelled",
+    "expired",
+]
+
+
+class SharedSessionStartRequest(BaseModel):
+    installation_probe_id: uuid.UUID
+    project_id: uuid.UUID | None = None
+    stop_mode: SharedSessionStopMode = "default_19"
+    scheduled_stop_at: datetime | None = None
+
+
+TemporaryMonitorProbeStatus = Literal["pending", "detected", "expired", "consumed"]
+
+
+class TemporaryMonitorProbeCreateResponse(BaseModel):
+    id: uuid.UUID
+    status: Literal["pending"] = "pending"
+    probe_token: str
+    expires_at: datetime
+
+
+class TemporaryMonitorProbeResponse(BaseModel):
+    id: uuid.UUID
+    status: TemporaryMonitorProbeStatus
+    expires_at: datetime
+    detected_at: datetime | None = None
+    device_id: str | None = None
+    installer_version: str | None = None
+
+
+class TemporaryMonitorProbeConfirmRequest(BaseModel):
+    probe_id: uuid.UUID
+    probe_token: str = Field(..., min_length=32, max_length=200)
+    device_id: str = Field(..., min_length=3, max_length=200)
+    installer_version: str = Field(..., min_length=1, max_length=100)
+
+
+class SharedSessionScheduleRequest(BaseModel):
+    stop_mode: SharedSessionStopMode
+    scheduled_stop_at: datetime | None = None
+
+
+class SharedSessionStopRequest(BaseModel):
+    reason: Literal["manual", "replaced_by_next_user"] = "manual"
+
+
+class SharedSessionResponse(BaseModel):
+    id: uuid.UUID
+    project_id: uuid.UUID | None = None
+    target_employee_id: str
+    target_employee_name: str
+    device_id: str | None = None
+    stop_mode: SharedSessionStopMode
+    stop_reason: str | None = None
+    status: SharedSessionStatus
+    requested_at: datetime
+    started_at: datetime | None = None
+    scheduled_stop_at: datetime
+    actual_stop_at: datetime | None = None
+    request_count: int = 0
+    total_tokens: int = 0
+    last_synced_at: datetime | None = None
+    last_synced_watermark: str | None = None
+    finalized_at: datetime | None = None
+    error_message: str | None = None
+    activation_token: str | None = None
+
+
+class SharedSessionDeviceActivateRequest(BaseModel):
+    session_id: uuid.UUID
+    activation_token: str = Field(..., min_length=32, max_length=200)
+    device_id: str = Field(..., min_length=3, max_length=200)
+    started_at: datetime
+    start_watermark: str | None = Field(None, max_length=200)
+
+
+class SharedSessionDeviceCommandRequest(BaseModel):
+    session_id: uuid.UUID
+    activation_token: str = Field(..., min_length=32, max_length=200)
+    device_id: str = Field(..., min_length=3, max_length=200)
+    checked_at: datetime
+    stop_reason: Literal["replaced_by_next_user"] | None = None
+
+
+class SharedSessionDeviceCommandResponse(BaseModel):
+    action: Literal["continue", "stop"]
+    scheduled_stop_at: datetime
+    stop_at: datetime | None = None
+    stop_reason: str | None = None
+
+
+class SharedSessionRequestInput(BaseModel):
+    request_id: str = Field(..., min_length=1, max_length=500)
+    requested_at: datetime
+    app_type: str = Field(..., min_length=1, max_length=40)
+    provider_id: str = Field(..., min_length=1, max_length=200)
+    model: str = Field(..., min_length=1, max_length=200)
+    request_model: str = Field("", max_length=200)
+    pricing_model: str = Field("", max_length=200)
+    status_code: int = Field(0, ge=0, le=999)
+    input_tokens: int = Field(0, ge=0)
+    output_tokens: int = Field(0, ge=0)
+    cache_read_tokens: int = Field(0, ge=0)
+    cache_creation_tokens: int = Field(0, ge=0)
+    total_tokens: int = Field(0, ge=0)
+    total_cost_usd: float = Field(0, ge=0)
+    input_token_semantics: int = Field(0, ge=0)
+
+
+class SharedSessionDeviceSyncRequest(BaseModel):
+    session_id: uuid.UUID
+    activation_token: str = Field(..., min_length=32, max_length=200)
+    device_id: str = Field(..., min_length=3, max_length=200)
+    checked_at: datetime
+    last_watermark: str | None = Field(None, max_length=200)
+    requests: list[SharedSessionRequestInput] = Field(default_factory=list, max_length=2000)
+
+
+class SharedSessionDeviceSyncResponse(BaseModel):
+    status: SharedSessionStatus
+    action: Literal["continue", "stop"]
+    scheduled_stop_at: datetime
+    stop_at: datetime | None = None
+    stop_reason: str | None = None
+    request_count: int = 0
+    total_tokens: int = 0
+    last_synced_at: datetime | None = None
+    accepted_watermark: str | None = None
+
+
+class SharedSessionDeviceFinalizeRequest(BaseModel):
+    session_id: uuid.UUID
+    activation_token: str = Field(..., min_length=32, max_length=200)
+    device_id: str = Field(..., min_length=3, max_length=200)
+    stopped_at: datetime
+    stop_reason: Literal[
+        "manual",
+        "scheduled",
+        "replaced_by_next_user",
+        "admin_forced",
+        "safety_timeout",
+    ]
+    requests: list[SharedSessionRequestInput] = Field(default_factory=list, max_length=10000)
+
+
+class CCSwitchUsageSyncStatusResponse(BaseModel):
+    status: Literal["never", "ok", "not_running", "error"]
+    employee_id: str
+    employee_name: str
+    device_id: str | None = None
+    trigger: Literal["automatic", "manual"] | None = None
+    request_id: uuid.UUID | None = None
+    range_start: date | None = None
+    range_end: date | None = None
+    row_count: int = 0
+    request_count: int = 0
+    total_tokens: int = 0
+    attempted_at: datetime | None = None
+    synced_at: datetime | None = None
+    cc_switch_running: bool | None = None
+    error_message: str | None = None
+
+
+class UsageReportRequest(BaseModel):
+    employee_id: str = Field(..., min_length=1, max_length=200)
+    start_date: date
+    end_date: date
+    source: AIUsageSource | None = None
+
+
+class UsageReportResponse(BaseModel):
+    employee: UsageEmployeeOption
+    summary: UsageSummaryResponse
+    high_frequency_periods: list[str]
+    report: str
+    model: str
+    generated_at: datetime
+    warnings: list[str] = Field(default_factory=list)
+    records_truncated: bool = False
+
+
+class DailyWorkItemResponse(BaseModel):
+    title: str
+    problem: str
+    actions: list[str]
+    result: str
+    artifacts: list[str]
+    validation: list[str]
+
+
+class DailyWorkLogResponse(BaseModel):
+    id: uuid.UUID
+    owner_user_id: uuid.UUID
+    work_date: date
+    employee_id: str
+    employee_name: str
+    report_markdown: str
+    work_items: list[DailyWorkItemResponse]
+    source_count: int
+    model: str
+    generated_at: datetime
+
+
+class DailyEmployeeOption(UsageEmployeeOption):
+    user_id: uuid.UUID
+
+
+class DailyWorkLogOptionsResponse(BaseModel):
+    mode: Literal['self','admin']
+    current_employee: DailyEmployeeOption
+    employees: list[DailyEmployeeOption]
+
+
+class DailyWorkLogListResponse(BaseModel):
+    employee: DailyEmployeeOption
+    timezone: Literal["Asia/Shanghai"] = "Asia/Shanghai"
+    items: list[DailyWorkLogResponse]
+
+
+def resolve_shared_session_stop_at(
+    *,
+    stop_mode: SharedSessionStopMode,
+    scheduled_stop_at: datetime | None,
+    now: datetime | None = None,
+) -> datetime:
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    current = current.astimezone(timezone.utc)
+    if stop_mode == "default_19":
+        local = current.astimezone(SHANGHAI_TIMEZONE)
+        candidate = local.replace(hour=19, minute=0, second=0, microsecond=0)
+        if candidate <= local:
+            candidate += timedelta(days=1)
+        return candidate.astimezone(timezone.utc)
+    if stop_mode == "manual_only":
+        return current + SHARED_SESSION_MAX_DURATION
+    if scheduled_stop_at is None:
+        raise HTTPException(status_code=422, detail="scheduled_stop_at is required")
+    if scheduled_stop_at.tzinfo is None:
+        raise HTTPException(status_code=422, detail="scheduled_stop_at must include timezone")
+    candidate = scheduled_stop_at.astimezone(timezone.utc)
+    if candidate < current + SHARED_SESSION_MIN_DURATION:
+        raise HTTPException(status_code=422, detail="scheduled stop must be at least 5 minutes later")
+    if candidate > current + SHARED_SESSION_MAX_DURATION:
+        raise HTTPException(status_code=422, detail="scheduled stop must be within 24 hours")
+    return candidate
+
+
+def _shared_token_hash(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _temporary_monitor_probe_response(row) -> TemporaryMonitorProbeResponse:
+    now = datetime.now(timezone.utc)
+    if row.consumed_at is not None:
+        status: TemporaryMonitorProbeStatus = "consumed"
+    elif row.expires_at <= now:
+        status = "expired"
+    elif row.detected_at is not None:
+        status = "detected"
+    else:
+        status = "pending"
+    return TemporaryMonitorProbeResponse(
+        id=row.id,
+        status=status,
+        expires_at=row.expires_at,
+        detected_at=row.detected_at,
+        device_id=row.device_id,
+        installer_version=row.installer_version,
+    )
+
+
+def _shared_session_response(row, *, activation_token: str | None = None) -> SharedSessionResponse:
+    return SharedSessionResponse(
+        id=row.id,
+        project_id=getattr(row, "project_id", None),
+        target_employee_id=row.target_employee_id,
+        target_employee_name=row.target_employee_name,
+        device_id=getattr(row, "device_id", None),
+        stop_mode=row.stop_mode,
+        stop_reason=getattr(row, "stop_reason", None),
+        status=row.status,
+        requested_at=row.requested_at,
+        started_at=getattr(row, "started_at", None),
+        scheduled_stop_at=row.scheduled_stop_at,
+        actual_stop_at=getattr(row, "actual_stop_at", None),
+        request_count=int(getattr(row, "request_count", 0) or 0),
+        total_tokens=int(getattr(row, "total_tokens", 0) or 0),
+        last_synced_at=getattr(row, "last_synced_at", None),
+        last_synced_watermark=getattr(row, "last_synced_watermark", None),
+        finalized_at=getattr(row, "finalized_at", None),
+        error_message=getattr(row, "error_message", None),
+        activation_token=activation_token,
+    )
+
+
+def _get_shared_session(
+    orm: Session,
+    *,
+    session_id: uuid.UUID | None = None,
+    target_user_id: uuid.UUID | None = None,
+    for_update: bool = False,
+):
+    conditions = []
+    params: dict[str, str] = {}
+    if session_id:
+        conditions.append("id = :session_id")
+        params["session_id"] = str(session_id)
+    if target_user_id:
+        conditions.append("target_user_id = :target_user_id")
+        params["target_user_id"] = str(target_user_id)
+    where = " AND ".join(conditions) or "true"
+    lock_clause = " FOR UPDATE" if for_update else ""
+    return orm.execute(
+        text(f"""
+            SELECT id, project_id, target_user_id,
+                   target_employee_id, target_employee_name,
+                   device_id, stop_mode, stop_reason, status,
+                   activation_token_hash, activation_expires_at,
+                   requested_at, started_at, scheduled_stop_at,
+                   actual_stop_at, request_count, total_tokens,
+                   last_synced_at, last_synced_watermark,
+                   finalized_at, error_message
+            FROM public.cc_switch_attribution_sessions
+            WHERE {where}
+            ORDER BY requested_at DESC
+            LIMIT 1
+            {lock_clause}
+        """),
+        params,
+    ).first()
+
+
+def _expire_stale_shared_sessions(
+    orm: Session,
+    *,
+    target_user_id: uuid.UUID | None = None,
+) -> None:
+    condition = ""
+    params: dict[str, str] = {}
+    if target_user_id is not None:
+        condition = " AND target_user_id = :target_user_id"
+        params["target_user_id"] = str(target_user_id)
+    orm.execute(
+        text(f"""
+            UPDATE public.cc_switch_attribution_sessions
+            SET status = 'expired', error_message = 'activation window expired',
+                updated_at = now()
+            WHERE status = 'starting'
+              AND activation_expires_at < now()
+              {condition}
+        """),
+        params,
+    )
+
+
+def _verify_shared_device_session(
+    row,
+    *,
+    activation_token: str,
+    device_id: str,
+    claims: dict[str, Any] | None = None,
+) -> None:
+    if row is None:
+        raise HTTPException(status_code=404, detail="shared session not found")
+    if not secrets.compare_digest(row.activation_token_hash, _shared_token_hash(activation_token)):
+        raise HTTPException(status_code=401, detail="shared session activation token is invalid")
+    expires_at = row.activation_expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if row.status == "starting" and datetime.now(timezone.utc) > expires_at:
+        raise HTTPException(status_code=410, detail="shared session activation token expired")
+    if row.device_id and row.device_id != device_id:
+        raise HTTPException(status_code=409, detail="shared session belongs to another device")
+
+
+def _shared_session_audit(
+    orm: Session,
+    request: Request,
+    *,
+    user_id: uuid.UUID,
+    action: str,
+    row,
+    metadata: dict[str, Any] | None = None,
+) -> None:
+    record_audit(
+        orm,
+        user_id=user_id,
+        action=action,
+        resource_type="ai_usage",
+        resource_id=str(row.id),
+        metadata={
+            "project_id": str(row.project_id) if getattr(row, "project_id", None) else None,
+            "employee_id": row.target_employee_id,
+            "device_id": getattr(row, "device_id", None),
+            **(metadata or {}),
+        },
+        request=request,
+    )
+
+
+def _profile_for_user(orm: Session, user_id: uuid.UUID):
+    return orm.execute(
+        text("""
+            SELECT au.email, pu.full_name, pu.nickname,
+                   COALESCE(pu.ai_detail_visible_to_admin, false) AS ai_detail_visible_to_admin
+            FROM auth.users au
+            LEFT JOIN public.users pu ON pu.id = au.id
+            WHERE au.id = :uid
+        """),
+        {"uid": str(user_id)},
+    ).first()
+
+
+def _current_employee(orm: Session, user_id: uuid.UUID) -> UsageEmployeeOption:
+    profile = _profile_for_user(orm, user_id)
+    if profile is None or not profile.email:
+        raise HTTPException(status_code=404, detail="user profile not found")
+    employee_id, employee_name = derive_employee_identity(
+        user_id=user_id,
+        email=profile.email,
+        full_name=getattr(profile, "nickname", None) or profile.full_name,
+    )
+    return UsageEmployeeOption(
+        id=employee_id,
+        user_id=user_id,
+        name=employee_name,
+        email=profile.email,
+        project_ids=[],
+        detail_visible_to_admin=bool(getattr(profile, "ai_detail_visible_to_admin", False)),
+    )
+
+
+def _is_org_admin(orm: Session, user_id: uuid.UUID) -> bool:
+    if is_system_admin(orm, user_id=user_id):
+        return True
+    return orm.execute(
+        text("""
+            SELECT 1
+            FROM public.user_orgs uo
+            JOIN public.projects p ON p.org_id = uo.org_id
+            JOIN public.project_members pm
+              ON pm.project_id = p.id
+             AND pm.user_id = uo.user_id
+            WHERE uo.user_id = :uid
+              AND uo.role::text IN ('owner', 'admin')
+              AND pm.role::text IN ('owner', 'admin')
+            LIMIT 1
+        """),
+        {"uid": str(user_id)},
+    ).first() is not None
+
+
+def _available_projects(
+    orm: Session,
+    *,
+    user_id: uuid.UUID,
+    is_admin: bool,
+) -> list[UsageProjectOption]:
+    if is_admin:
+        rows = orm.execute(
+            text("""
+                SELECT DISTINCT p.id, p.name,
+                       COALESCE(p.department_id, 'research') AS department_id
+                FROM public.projects p
+                WHERE EXISTS (
+                    SELECT 1
+                    FROM public.users system_admin
+                    WHERE system_admin.id = :uid
+                      AND COALESCE(system_admin.is_system_admin, false)
+                ) OR EXISTS (
+                    SELECT 1
+                    FROM public.user_orgs uo
+                    WHERE uo.org_id = p.org_id
+                      AND uo.user_id = :uid
+                      AND uo.role::text IN ('owner', 'admin')
+                )
+                ORDER BY department_id, p.name
+            """),
+            {"uid": str(user_id)},
+        ).all()
+    else:
+        rows = orm.execute(
+            text("""
+                SELECT p.id, p.name,
+                       COALESCE(p.department_id, 'research') AS department_id
+                FROM public.projects p
+                JOIN public.project_members pm ON pm.project_id = p.id
+                WHERE pm.user_id = :uid
+                ORDER BY department_id, p.name
+            """),
+            {"uid": str(user_id)},
+        ).all()
+    return [
+        UsageProjectOption(
+            id=row.id,
+            name=row.name,
+            department_id=row.department_id,
+        )
+        for row in rows
+    ]
+
+
+def _bind_list(values: list[str], prefix: str) -> tuple[str, dict[str, str]]:
+    parameters = {f"{prefix}_{index}": value for index, value in enumerate(values)}
+    return ", ".join(f":{name}" for name in parameters), parameters
+
+
+def _employee_option_maps(
+    orm: Session,
+) -> tuple[dict[str, UsageEmployeeOption], dict[str, UsageEmployeeOption]]:
+    rows = orm.execute(
+        text("""
+            SELECT au.id AS user_id, au.email, pu.full_name, pu.nickname,
+                   COALESCE(pu.is_active, true) AS is_active,
+                   COALESCE(pu.ai_detail_visible_to_admin, false) AS ai_detail_visible_to_admin
+            FROM auth.users au
+            LEFT JOIN public.users pu ON pu.id = au.id
+            WHERE au.email IS NOT NULL
+              AND COALESCE(pu.is_active, true)
+            ORDER BY COALESCE(NULLIF(BTRIM(pu.nickname), ''), pu.full_name, au.email), au.email
+        """),
+    ).all()
+    employees_by_employee_id: dict[str, UsageEmployeeOption] = {}
+    employees_by_user_id: dict[str, UsageEmployeeOption] = {}
+    for row in rows:
+        if not bool(getattr(row, "is_active", True)):
+            continue
+        if not is_employee_account_email(row.email):
+            continue
+        employee_id, employee_name = derive_employee_identity(
+            user_id=row.user_id,
+            email=row.email,
+            full_name=getattr(row, "nickname", None) or row.full_name,
+        )
+        employees_by_user_id[str(row.user_id)] = UsageEmployeeOption(
+                id=employee_id,
+                user_id=row.user_id,
+                name=employee_name,
+                email=row.email,
+                project_ids=[],
+                detail_visible_to_admin=bool(getattr(row, "ai_detail_visible_to_admin", False)),
+            )
+    # Alias compatibility is only valid when exactly one real user owns it.
+    aliases={}
+    for option in employees_by_user_id.values():aliases.setdefault(option.id,[]).append(option)
+    employees_by_employee_id={alias:options[0] for alias,options in aliases.items() if len(options)==1}
+    return employees_by_employee_id, employees_by_user_id
+
+
+def _employee_options(
+    orm: Session,
+) -> list[UsageEmployeeOption]:
+    _, employees = _employee_option_maps(orm)
+    return sorted(employees.values(), key=lambda item: (item.name, item.email))
+
+
+def _usage_options(
+    orm: Session,
+    user_id: uuid.UUID,
+) -> UsageOptionsResponse:
+    is_admin = _is_org_admin(orm, user_id)
+    current = _current_employee(orm, user_id)
+    employees = _employee_options(orm)
+    return UsageOptionsResponse(
+        mode="admin" if is_admin else "statistics",
+        current_employee=current,
+        departments=[UsageDepartmentOption(id=item[0], name=item[1]) for item in DEPARTMENTS],
+        projects=[],
+        employees=employees,
+    )
+
+
+def _get_cached_usage_options(
+    orm: Session,
+    user_id: uuid.UUID,
+) -> UsageOptionsResponse:
+    # Retain the private helper name for callers while removing stale identity,
+    # consent and role authorization from the response cache.
+    return _usage_options(orm, user_id)
+
+
+def _raise_access(error: UsageAccessError) -> None:
+    raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+
+
+def _resolve_scope(
+    orm: Session,
+    *,
+    user_id: uuid.UUID,
+    department_id: str | None,
+    project_id: uuid.UUID | None,
+    requested_employee_id: str | None,
+) -> tuple[AIUsageMode, UsageEmployeeOption, list[UsageProjectOption]]:
+    options = _get_cached_usage_options(orm, user_id)
+
+    requested=str(requested_employee_id or user_id).strip().casefold()
+    employee=next((item for item in options.employees if str(item.user_id).casefold()==requested),None)
+    if employee is None:
+        matching=[item for item in options.employees if requested in {item.id.casefold(),item.email.casefold()}]
+        if len(matching)>1:raise HTTPException(status_code=409,detail='Ambiguous employee alias; select the user UUID')
+        employee=matching[0] if matching else None
+    if employee is None:
+        raise HTTPException(status_code=404, detail="employee account not found")
+    return options.mode, employee, []
+
+
+def _daily_owner_option(owner) -> DailyEmployeeOption:
+    return DailyEmployeeOption(user_id=owner.user_id,id=owner.employee_id,name=owner.name,email=owner.email,
+        detail_visible_to_admin=owner.detail_visible_to_admin)
+
+
+def _resolve_daily_log_scope(
+    orm: Session,
+    *,
+    user_id: uuid.UUID,
+    requested_employee_id: str | None,
+) -> tuple[Literal["self", "admin"], DailyEmployeeOption, list[UsageProjectOption]]:
+    try:
+        owner=daily_access.resolve_owner(orm,caller_user_id=user_id,requested_owner=requested_employee_id)
+    except daily_access.DailyAccessError as error:
+        raise HTTPException(status_code=error.status_code,detail=error.detail) from error
+    return ('self' if owner.user_id==str(user_id) else 'admin'),_daily_owner_option(owner),[]
+
+
+def _can_view_detailed_records(
+    mode: AIUsageMode,
+    current: UsageEmployeeOption,
+    employee: UsageEmployeeOption,
+) -> bool:
+    if current.user_id is not None and current.user_id == employee.user_id:
+        return True
+    return mode == "admin" and employee.detail_visible_to_admin
+
+
+def _chat_records(
+    orm: Session,
+    *,
+    employee_id: str,
+    start_utc: datetime,
+    end_utc: datetime,
+    source: AIUsageSource | None,
+    owner_user_id: uuid.UUID | None = None,
+    detail_viewer_user_id: uuid.UUID | None = None,
+) -> list[UsageRecord]:
+    params = {
+        "employee_id": employee_id,
+        "start_utc": start_utc,
+        "end_utc": end_utc,
+    }
+    source_condition = ""
+    if source:
+        source_condition = "AND s.source = :source"
+        params["source"] = source
+    owner_condition=''
+    identity_condition='s.employee_id=:employee_id'
+    if owner_user_id is not None:
+        # All Gateway requests are counted from their ledger, including those
+        # linked to a mutable conversation mirror. Never count that mirror too.
+        identity_condition='s.user_id=CAST(:owner AS uuid)'
+        owner_condition="AND s.identity_version=2 AND s.source<>'ai_gateway'"
+        params['owner']=str(owner_user_id)
+    if detail_viewer_user_id is not None:
+        owner_condition+=f""" AND EXISTS (SELECT 1 FROM {chat_access.FROM_SQL}
+            WHERE viewer.id=CAST(:caller AS uuid) AND owner_profile.id=s.user_id AND project.id=s.project_id
+              AND {chat_access.READABLE_SQL})"""
+        params['caller']=str(detail_viewer_user_id)
+    rows = orm.execute(
+        text(f"""
+            SELECT s.id, s.user_id, s.project_id, COALESCE(p.name, 'AI Monitor') AS project_name,
+                   s.employee_id, s.employee_name,
+                   s.source, s.title, s.task_id, s.task_title, s.model,
+                   s.status, s.started_at, s.ended_at, s.duration_ms,
+                   s.prompt_tokens, s.completion_tokens, s.total_tokens,
+                   s.cost, s.error_count, s.trace_id,
+                   (SELECT count(*)::int FROM public.ai_chat_messages m
+                    WHERE m.session_id = s.id) AS message_count
+            FROM public.ai_chat_sessions s
+            LEFT JOIN public.projects p ON p.id = s.project_id
+            WHERE {identity_condition}
+              AND s.started_at >= :start_utc
+              AND s.started_at < :end_utc
+              {owner_condition}
+              {source_condition}
+            ORDER BY s.started_at DESC
+        """),
+        params,
+    ).all()
+    return [
+        UsageRecord(
+            id=str(row.id),
+            record_type="chat",
+            owner_user_id=str(row.user_id) if owner_user_id is not None else None,
+            project_id=str(row.project_id),
+            project_name=row.project_name or "AI Monitor",
+            employee_id=row.employee_id,
+            employee_name=row.employee_name,
+            source=row.source,
+            title=row.title or row.task_title or "未命名 AI 会话",
+            started_at=row.started_at,
+            ended_at=row.ended_at,
+            task_id=row.task_id,
+            task_title=row.task_title,
+            model=row.model,
+            status=row.status,
+            duration_ms=row.duration_ms,
+            prompt_tokens=row.prompt_tokens,
+            completion_tokens=row.completion_tokens,
+            total_tokens=row.total_tokens,
+            cost=float(row.cost or 0),
+            error_count=row.error_count,
+            trace_id=row.trace_id,
+            message_count=row.message_count,
+        )
+        for row in rows
+    ]
+
+
+def _trace_records(
+    clickhouse: Any,
+    *,
+    employee_id: str,
+    start_utc: datetime,
+    end_utc: datetime,
+    source: AIUsageSource | None,
+) -> list[UsageRecord]:
+    if source and source != "cc_switch":
+        return []
+    parameters: dict[str, Any] = {
+        "employee_id": employee_id,
+        "start_utc": start_utc,
+        "end_utc": end_utc,
+    }
+
+    employee_expr = "coalesce(nullIf(SpanAttributes['agentops.employee.id'], ''), nullIf(ResourceAttributes['agentops.employee.id'], ''))"
+    employee_name_expr = "coalesce(nullIf(SpanAttributes['agentops.employee.name'], ''), nullIf(ResourceAttributes['agentops.employee.name'], ''), '')"
+    task_id_expr = "coalesce(nullIf(SpanAttributes['agentops.task.id'], ''), nullIf(ResourceAttributes['agentops.task.id'], ''), '')"
+    task_title_expr = "coalesce(nullIf(SpanAttributes['agentops.task.title'], ''), nullIf(ResourceAttributes['agentops.task.title'], ''), '')"
+    model_expr = "coalesce(nullIf(SpanAttributes['gen_ai.response.model'], ''), nullIf(SpanAttributes['gen_ai.request.model'], ''), nullIf(SpanAttributes['llm.model'], ''), nullIf(SpanAttributes['model'], ''), '')"
+    prompt_expr = "toUInt64OrZero(coalesce(nullIf(SpanAttributes['gen_ai.usage.prompt_tokens'], ''), nullIf(SpanAttributes['gen_ai.usage.input_tokens'], ''), nullIf(SpanAttributes['input_tokens'], ''), '0'))"
+    completion_expr = "toUInt64OrZero(coalesce(nullIf(SpanAttributes['gen_ai.usage.completion_tokens'], ''), nullIf(SpanAttributes['gen_ai.usage.output_tokens'], ''), nullIf(SpanAttributes['output_tokens'], ''), '0'))"
+    total_expr = f"if(toUInt64OrZero(SpanAttributes['gen_ai.usage.total_tokens']) > 0, toUInt64OrZero(SpanAttributes['gen_ai.usage.total_tokens']), {prompt_expr} + {completion_expr} + toUInt64OrZero(SpanAttributes['gen_ai.usage.reasoning_tokens']) + toUInt64OrZero(SpanAttributes['gen_ai.usage.cache_read_input_tokens']))"
+    codex_prompt_expr = "toUInt64OrZero(SpanAttributes['codex.turn.token_usage.input_tokens'])"
+    codex_completion_expr = "toUInt64OrZero(SpanAttributes['codex.turn.token_usage.output_tokens'])"
+    codex_total_expr = "toUInt64OrZero(SpanAttributes['codex.turn.token_usage.total_tokens'])"
+    turn_id_expr = "coalesce(nullIf(SpanAttributes['turn.id'], ''), nullIf(SpanAttributes['turn_id'], ''), '')"
+    source_application_expr = "coalesce(nullIf(SpanAttributes['source.application'], ''), '')"
+    meaningful_expr = f"""(
+        SpanName = 'session_task.turn'
+        OR {total_expr} > 0
+        OR {codex_total_expr} > 0
+        OR {task_id_expr} != ''
+        OR SpanAttributes['gen_ai.operation.name'] != ''
+        OR SpanAttributes['gen_ai.operation'] != ''
+        OR SpanAttributes['gen_ai.tool.name'] != ''
+        OR SpanAttributes['tool.name'] != ''
+        OR lower(SpanAttributes['agentops.span.kind']) IN ('llm', 'tool')
+    )"""
+    cost_expr = "toFloat64OrZero(coalesce(nullIf(SpanAttributes['gen_ai.usage.total_cost'], ''), nullIf(SpanAttributes['llm.cost'], ''), '0'))"
+    sql = f"""
+        SELECT
+            toString(project_id) AS project_id,
+            TraceId AS trace_id,
+            min(Timestamp) AS started_at,
+            max(Timestamp) AS ended_at,
+            any({employee_name_expr}) AS employee_name,
+            anyIf({task_id_expr}, {task_id_expr} != '') AS task_id,
+            anyIf({task_title_expr}, {task_title_expr} != '') AS task_title,
+            anyIf({turn_id_expr}, {turn_id_expr} != '') AS turn_id,
+            anyIf({source_application_expr}, {source_application_expr} != '') AS source_application,
+            arrayStringConcat(groupUniqArrayIf({model_expr}, {model_expr} != ''), ', ') AS model,
+            if(max({codex_prompt_expr}) > 0, max({codex_prompt_expr}), sum({prompt_expr})) AS prompt_tokens,
+            if(max({codex_completion_expr}) > 0, max({codex_completion_expr}), sum({completion_expr})) AS completion_tokens,
+            if(max({codex_total_expr}) > 0, max({codex_total_expr}), sum({total_expr})) AS total_tokens,
+            sum({cost_expr}) AS cost,
+            countIf(upper(StatusCode) = 'ERROR') AS error_count,
+            count() AS span_count,
+            countIf({meaningful_expr}) AS meaningful_span_count
+        FROM otel_traces
+        WHERE Timestamp >= %(start_utc)s
+          AND Timestamp < %(end_utc)s
+          AND {employee_expr} = %(employee_id)s
+        GROUP BY project_id, TraceId
+        HAVING meaningful_span_count > 0
+        ORDER BY started_at DESC
+    """
+    result = clickhouse.query(sql, parameters=parameters)
+    records = []
+    for row in result.named_results():
+        project_id = str(row["project_id"])
+        started_at = row["started_at"]
+        ended_at = row["ended_at"]
+        if started_at.tzinfo is None:
+            started_at = started_at.replace(tzinfo=timezone.utc)
+        if ended_at.tzinfo is None:
+            ended_at = ended_at.replace(tzinfo=timezone.utc)
+        task_id = str(row.get("task_id") or "unassigned")
+        task_title = str(row.get("task_title") or "") or None
+        trace_id = str(row["trace_id"])
+        model = str(row.get("model") or "") or None
+        is_codex_turn = bool(row.get("turn_id")) or row.get("source_application") == "codex"
+        title = task_title or (
+            f"Codex 对话 · {model}" if is_codex_turn and model else "Codex 对话"
+        )
+        records.append(
+            UsageRecord(
+                id=f"trace:{trace_id}",
+                record_type="trace",
+                project_id=project_id,
+                project_name="AI Monitor",
+                employee_id=employee_id,
+                employee_name=str(row.get("employee_name") or employee_id),
+                source="cc_switch",
+                title=title if is_codex_turn else task_title or f"AI 调用 {trace_id[:12]}",
+                started_at=started_at,
+                ended_at=ended_at,
+                task_id=task_id,
+                task_title=task_title,
+                model=model,
+                status="error" if int(row.get("error_count") or 0) else "ok",
+                duration_ms=max(int((ended_at - started_at).total_seconds() * 1000), 0),
+                prompt_tokens=int(row.get("prompt_tokens") or 0),
+                completion_tokens=int(row.get("completion_tokens") or 0),
+                total_tokens=int(row.get("total_tokens") or 0),
+                cost=float(row.get("cost") or 0),
+                error_count=int(row.get("error_count") or 0),
+                trace_id=trace_id,
+                message_count=int(row.get("span_count") or 0),
+            )
+        )
+    return records
+
+
+def _attach_messages(
+    orm: Session,
+    records: list[UsageRecord],
+    *,
+    viewer_user_id: uuid.UUID | None = None,
+    owner_user_id: uuid.UUID | None = None,
+) -> list[UsageRecord]:
+    chat_ids: list[str] = []
+    for item in records:
+        if item.record_type != "chat":
+            continue
+        try:
+            uuid.UUID(str(item.id))
+        except (AttributeError, TypeError, ValueError):
+            # Shared temporary-token sessions use a stable pseudo id such as
+            # ``shared:<uuid>`` and have no rows in ai_chat_messages.
+            continue
+        chat_ids.append(item.id)
+    if not chat_ids:
+        return records
+    placeholders, params = _bind_list(chat_ids, "session")
+    sql=f"""SELECT session_id,role,content,token_count,COALESCE(message_created_at,created_at) AS created_at
+        FROM public.ai_chat_messages WHERE session_id IN ({placeholders}) ORDER BY session_id,sequence_index"""
+    if viewer_user_id is not None:
+        if owner_user_id is None:raise ValueError('Private message reads require an owner UUID')
+        params.update(caller=str(viewer_user_id),owner=str(owner_user_id))
+        # Recheck at the message read as well. The LEFT JOIN retains authorized
+        # empty sessions; denied sessions are absent and lose their metadata too.
+        sql=f"""SELECT s.id AS session_id,m.role,m.content,m.token_count,
+            COALESCE(m.message_created_at,m.created_at) AS created_at
+            FROM public.ai_chat_sessions s LEFT JOIN public.ai_chat_messages m ON m.session_id=s.id
+            WHERE s.id IN ({placeholders}) AND s.user_id=CAST(:owner AS uuid) AND s.identity_version=2
+              AND EXISTS (SELECT 1 FROM {chat_access.FROM_SQL}
+                WHERE viewer.id=CAST(:caller AS uuid) AND owner_profile.id=s.user_id AND project.id=s.project_id
+                  AND {chat_access.READABLE_SQL})
+            ORDER BY s.id,m.sequence_index"""
+    rows = orm.execute(
+        text(sql),
+        params,
+    ).all()
+    readable_ids={str(row.session_id) for row in rows}
+    messages: dict[str, list[UsageMessage]] = {}
+    for row in rows:
+        if row.role is None:continue
+        messages.setdefault(str(row.session_id), []).append(
+            UsageMessage(
+                role=row.role,
+                content=row.content,
+                token_count=row.token_count,
+                created_at=row.created_at,
+            )
+        )
+    return [
+        replace(item, messages=tuple(messages.get(item.id, [])))
+        if item.record_type == "chat"
+        else item
+        for item in records
+        if viewer_user_id is None or item.id not in chat_ids or item.id in readable_ids
+    ]
+
+
+def _merge_synced_conversations(
+    chat_records: list[UsageRecord],
+    trace_records: list[UsageRecord],
+) -> tuple[list[UsageRecord], list[UsageRecord]]:
+    padding = timedelta(seconds=90)
+
+    def overlaps(chat: UsageRecord, trace: UsageRecord) -> bool:
+        if chat.source != "cc_switch":
+            return False
+        if chat.trace_id and chat.trace_id == trace.trace_id:
+            return True
+        chat_end = chat.ended_at or chat.started_at
+        trace_end = trace.ended_at or trace.started_at
+        return (
+            trace.started_at <= chat_end + padding
+            and trace_end >= chat.started_at - padding
+        )
+
+    suppressed_trace_indexes: set[int] = set()
+    merged_chats: list[UsageRecord] = []
+    for chat in chat_records:
+        candidates = [
+            (index, trace)
+            for index, trace in enumerate(trace_records)
+            if overlaps(chat, trace)
+        ]
+        for index, _ in candidates:
+            suppressed_trace_indexes.add(index)
+        if not candidates:
+            merged_chats.append(chat)
+            continue
+        _, trace = min(
+            candidates,
+            key=lambda item: (
+                1
+                if chat.model
+                and item[1].model
+                and chat.model.casefold() != item[1].model.casefold()
+                else 0,
+                abs((item[1].started_at - chat.started_at).total_seconds()),
+            ),
+        )
+        merged_chats.append(
+            replace(
+                chat,
+                model=chat.model or trace.model,
+                prompt_tokens=chat.prompt_tokens or trace.prompt_tokens,
+                completion_tokens=(
+                    chat.completion_tokens or trace.completion_tokens
+                ),
+                total_tokens=chat.total_tokens or trace.total_tokens,
+                cost=chat.cost or trace.cost,
+                error_count=max(chat.error_count, trace.error_count),
+                trace_id=chat.trace_id or trace.trace_id,
+            )
+        )
+    remaining_traces = [
+        trace
+        for index, trace in enumerate(trace_records)
+        if index not in suppressed_trace_indexes
+    ]
+    return merged_chats, remaining_traces
+
+
+def _has_stale_unsynced_trace(
+    chat_records: list[UsageRecord],
+    trace_records: list[UsageRecord],
+) -> bool:
+    if not trace_records:
+        return False
+    synced_chats = [item for item in chat_records if item.source == "cc_switch"]
+    if not synced_chats:
+        return True
+    latest_sync = max(item.ended_at or item.started_at for item in synced_chats)
+    latest_trace = max(item.ended_at or item.started_at for item in trace_records)
+    return latest_trace > latest_sync + CONVERSATION_SYNC_GRACE_PERIOD
+
+
+def _cc_switch_authoritative_daily(
+    orm: Session,
+    *,
+    employee_id: str,
+    owner_user_id: uuid.UUID,
+    start_date: date,
+    end_date: date,
+    include_personal: bool = True,
+) -> list[AuthoritativeUsageDaily]:
+    rows = []
+    if include_personal:
+        rows = orm.execute(
+            text("""
+            SELECT
+                usage_date,
+                sum(request_count)::bigint AS request_count,
+                sum(
+                    CASE
+                        WHEN input_token_semantics = 2 THEN input_tokens
+                        WHEN lower(app_type) IN ('codex', 'gemini')
+                             AND input_token_semantics = 1
+                             AND input_tokens >= cache_read_tokens + cache_creation_tokens
+                        THEN input_tokens - cache_read_tokens - cache_creation_tokens
+                        WHEN lower(app_type) IN ('codex', 'gemini')
+                             AND input_token_semantics = 0
+                             AND input_tokens >= cache_read_tokens
+                        THEN input_tokens - cache_read_tokens
+                        ELSE input_tokens
+                    END
+                )::bigint AS input_tokens,
+                sum(output_tokens)::bigint AS output_tokens,
+                sum(cache_read_tokens)::bigint AS cache_read_tokens,
+                sum(cache_creation_tokens)::bigint AS cache_creation_tokens,
+                sum(total_tokens)::bigint AS total_tokens,
+                sum(GREATEST(request_count - success_count, 0))::bigint
+                    AS error_count,
+                sum(total_cost_usd)::double precision AS total_cost
+            FROM public.cc_switch_usage_daily
+            WHERE user_id = CAST(:owner AS uuid)
+              AND usage_date >= :start_date
+              AND usage_date <= :end_date
+            GROUP BY usage_date
+            ORDER BY usage_date
+            """),
+            {
+                "employee_id": employee_id,
+                "owner": str(owner_user_id),
+                "start_date": start_date,
+                "end_date": end_date,
+            },
+        ).all()
+    daily = [
+        AuthoritativeUsageDaily(
+            usage_date=row.usage_date,
+            request_count=int(row.request_count or 0),
+            input_tokens=int(row.input_tokens or 0),
+            output_tokens=int(row.output_tokens or 0),
+            cache_read_tokens=int(row.cache_read_tokens or 0),
+            cache_creation_tokens=int(row.cache_creation_tokens or 0),
+            total_tokens=int(row.total_tokens or 0),
+            error_count=int(row.error_count or 0),
+            total_cost=float(row.total_cost or 0),
+        )
+        for row in rows
+    ]
+    shared_rows = orm.execute(
+        text("""
+            SELECT usage_date,
+                   count(*)::bigint AS request_count,
+                   sum(
+                       CASE
+                           WHEN input_token_semantics = 2 THEN input_tokens
+                           WHEN lower(app_type) IN ('codex', 'gemini')
+                                AND input_token_semantics = 1
+                                AND input_tokens >= cache_read_tokens + cache_creation_tokens
+                           THEN input_tokens - cache_read_tokens - cache_creation_tokens
+                           WHEN lower(app_type) IN ('codex', 'gemini')
+                                AND input_token_semantics = 0
+                                AND input_tokens >= cache_read_tokens
+                           THEN input_tokens - cache_read_tokens
+                           ELSE input_tokens
+                       END
+                   )::bigint AS input_tokens,
+                   sum(output_tokens)::bigint AS output_tokens,
+                   sum(cache_read_tokens)::bigint AS cache_read_tokens,
+                   sum(cache_creation_tokens)::bigint AS cache_creation_tokens,
+                   sum(total_tokens)::bigint AS total_tokens,
+                   count(*) FILTER (WHERE status_code < 200 OR status_code >= 400)::bigint AS error_count,
+                   sum(total_cost_usd)::double precision AS total_cost
+            FROM public.cc_switch_attributed_requests
+            WHERE target_user_id = CAST(:owner AS uuid)
+              AND usage_date >= :start_date
+              AND usage_date <= :end_date
+            GROUP BY usage_date
+            ORDER BY usage_date
+        """),
+        {
+            "employee_id": employee_id,
+            "owner": str(owner_user_id),
+            "start_date": start_date,
+            "end_date": end_date,
+        },
+    ).all()
+    combined: dict[date, AuthoritativeUsageDaily] = {
+        item.usage_date: item for item in daily
+    }
+    for row in shared_rows:
+        current = combined.get(row.usage_date)
+        combined[row.usage_date] = AuthoritativeUsageDaily(
+            usage_date=row.usage_date,
+            request_count=int(row.request_count or 0) + (current.request_count if current else 0),
+            input_tokens=int(row.input_tokens or 0) + (current.input_tokens if current else 0),
+            output_tokens=int(row.output_tokens or 0) + (current.output_tokens if current else 0),
+            cache_read_tokens=int(row.cache_read_tokens or 0) + (current.cache_read_tokens if current else 0),
+            cache_creation_tokens=int(row.cache_creation_tokens or 0) + (current.cache_creation_tokens if current else 0),
+            total_tokens=int(row.total_tokens or 0) + (current.total_tokens if current else 0),
+            error_count=int(row.error_count or 0) + (current.error_count if current else 0),
+            total_cost=float(row.total_cost or 0) + (current.total_cost if current else 0),
+        )
+    return [combined[item] for item in sorted(combined)]
+
+
+def _shared_cc_switch_records(
+    orm: Session,
+    *,
+    employee_id: str,
+    owner_user_id: uuid.UUID,
+    start_utc: datetime,
+    end_utc: datetime,
+    detail_viewer_user_id: uuid.UUID | None = None,
+) -> list[UsageRecord]:
+    detail_condition=''
+    if detail_viewer_user_id is not None:
+        # Old nullable project references may have been nulled by project
+        # deletion. Keep the owner's history, but do not infer a private scope
+        # for another reader from that loss of provenance.
+        detail_condition=f"""AND EXISTS (SELECT 1 FROM {daily_access.OWNER_FROM_SQL}
+          WHERE owner_profile.id=r.target_user_id AND {daily_access.OWNER_FILTER_SQL}
+            AND ((r.project_id IS NULL AND viewer.id=r.target_user_id) OR EXISTS (
+              SELECT 1 FROM public.projects source_project
+              JOIN public.project_members source_owner ON source_owner.project_id=source_project.id
+              WHERE source_project.id=r.project_id AND source_owner.user_id=r.target_user_id
+                AND (viewer.id=r.target_user_id OR viewer.is_system_admin IS TRUE OR EXISTS (
+                  SELECT 1 FROM public.project_members source_admin
+                  JOIN public.user_orgs source_org ON source_org.user_id=source_admin.user_id AND source_org.org_id=source_project.org_id
+                  WHERE source_admin.project_id=source_project.id AND source_admin.user_id=viewer.id
+                    AND source_admin.role::text IN ('owner','admin') AND source_org.role::text IN ('owner','admin')
+                ))
+            ))
+        )"""
+    rows = orm.execute(
+        text(f"""
+            SELECT r.id,r.target_user_id,r.project_id,p.name AS project_name,
+                   r.target_employee_id,r.target_employee_name,r.requested_at,r.usage_date,
+                   r.input_tokens,r.output_tokens,r.cache_read_tokens,r.cache_creation_tokens,
+                   r.total_tokens,r.total_cost_usd,r.status_code,r.model,r.app_type,r.input_token_semantics
+            FROM public.cc_switch_attributed_requests r
+            JOIN public.cc_switch_attribution_sessions s ON s.id=r.session_id AND s.target_user_id=r.target_user_id
+            LEFT JOIN public.projects p ON p.id = r.project_id
+            WHERE r.target_user_id = CAST(:owner AS uuid)
+              AND r.usage_date >= :start_day AND r.usage_date < :end_day
+              {detail_condition}
+            ORDER BY r.requested_at DESC,r.id
+        """),
+        {"owner":str(owner_user_id),"caller":str(detail_viewer_user_id),"start_day":start_utc.astimezone(SHANGHAI_TIMEZONE).date(),
+         "end_day":end_utc.astimezone(SHANGHAI_TIMEZONE).date()},
+    ).all()
+    return [
+        UsageRecord(
+            id=f"shared:{row.id}",
+            record_type="chat",
+            owner_user_id=str(row.target_user_id),
+            usage_date=row.usage_date,
+            project_id=str(row.project_id or uuid.UUID(int=0)),
+            project_name=str(row.project_name or "无项目归属"),
+            employee_id=str(row.target_employee_id),
+            employee_name=str(row.target_employee_name),
+            source="cc_switch",
+            title="公用电脑请求",
+            started_at=row.requested_at,
+            ended_at=row.requested_at,
+            task_id="shared-device",
+            task_title="公用电脑临时记录",
+            model=row.model,
+            status="ok" if 200 <= int(row.status_code) < 400 else "error",
+            prompt_tokens=cc_switch_total_tokens(app_type=str(row.app_type).lower(),input_tokens=int(row.input_tokens),output_tokens=0,
+                cache_read_tokens=int(row.cache_read_tokens),cache_creation_tokens=int(row.cache_creation_tokens),
+                input_token_semantics=int(row.input_token_semantics)),
+            completion_tokens=int(row.output_tokens or 0),
+            total_tokens=int(row.total_tokens or 0),
+            cost=float(row.total_cost_usd or 0),
+            error_count=0 if 200 <= int(row.status_code) < 400 else 1,
+            message_count=0,
+        )
+        for row in rows
+    ]
+
+
+def _gateway_records(
+    orm: Session,
+    *,
+    employee_id: str,
+    start_utc: datetime,
+    end_utc: datetime,
+    owner_user_id: uuid.UUID | None = None,
+    detail_viewer_user_id: uuid.UUID | None = None,
+    include_messages: bool = False,
+    event_ids: list[str] | None = None,
+) -> list[UsageRecord]:
+    if include_messages and (detail_viewer_user_id is None or event_ids is None or len(event_ids) > 200):
+        raise ValueError('Gateway body reads require a current viewer and at most 200 selected events')
+    condition='e.user_id=CAST(:owner AS uuid)' if owner_user_id is not None else 'e.employee_id=:employee_id'
+    selected_params = {}
+    if event_ids is not None:
+        if not event_ids:
+            return []
+        placeholders, selected_params = _bind_list([str(uuid.UUID(value)) for value in event_ids], 'gateway_event')
+        condition += f' AND e.id IN ({placeholders})'
+    if detail_viewer_user_id is not None:
+        # Authorize at the actual detail read. The immutable admission supplies
+        # project scope even if its mutable chat mirror is removed or reassigned.
+        # Legacy events without that provenance retain statistics, not guessed
+        # personal/project detail access.
+        condition += " AND " + gateway_content.READABLE_SQL
+    body_bytes = gateway_content.MESSAGE_BYTES_SQL
+    eligible_bytes = f"CASE WHEN {body_bytes} <= :inline_bytes THEN {body_bytes} ELSE 0 END"
+    within_budget = f"({body_bytes} <= :inline_bytes AND SUM({eligible_bytes}) OVER (ORDER BY e.started_at DESC,e.id ROWS UNBOUNDED PRECEDING) <= :page_bytes)"
+    payload_expression = gateway_content.METADATA_SQL
+    if include_messages:
+        payload_expression += f" || jsonb_build_object('messages',CASE WHEN {within_budget} THEN a.event_payload->'messages' ELSE NULL END,'messages_truncated',NOT {within_budget})"
+    rows = orm.execute(text(f"""
+        SELECT e.id,e.user_id,e.employee_id,e.employee_name,e.model,e.request_model,
+               e.status_code,e.input_tokens,e.output_tokens,e.cache_read_tokens,
+               e.cache_creation_tokens,e.total_tokens,e.total_cost_usd,e.error_message,
+               e.started_at,e.completed_at,e.usage_missing,e.usage_date,
+               a.id AS admission_id,e.gateway_instance_id,e.key_id,
+               e.reasoning_tokens,e.input_token_semantics,
+               {gateway_tokens.REPORTED_SQL} AS reported_tokens,
+               {payload_expression} AS gateway_payload,
+               CASE WHEN jsonb_typeof(a.event_payload->'messages')='array'
+                    THEN jsonb_array_length(a.event_payload->'messages') ELSE 0 END AS message_count,
+               COALESCE(a.event_payload->>'project_id',
+                 CASE WHEN s.user_id=e.user_id AND s.identity_version=2 THEN s.project_id::text END) AS project_id
+        FROM public.ai_gateway_events e
+        JOIN public.ai_gateway_admissions a ON a.id::text=e.event_id
+          AND a.user_id=e.user_id AND a.gateway_instance_id=e.gateway_instance_id
+          AND a.key_id=e.key_id AND a.delivered_at IS NOT NULL
+        LEFT JOIN public.ai_chat_sessions s ON s.id=e.chat_session_id
+        WHERE {condition}
+          AND e.usage_date >= :start_day AND e.usage_date < :end_day
+        ORDER BY e.started_at DESC,e.id
+    """), {"employee_id": employee_id, "owner":str(owner_user_id),"caller":str(detail_viewer_user_id),
+        "start_day":start_utc.astimezone(SHANGHAI_TIMEZONE).date(),"end_day":end_utc.astimezone(SHANGHAI_TIMEZONE).date(),
+        "inline_bytes":gateway_content.INLINE_MESSAGE_BYTES,"page_bytes":gateway_content.PAGE_MESSAGE_BYTES,
+        **selected_params}).all()
+    records = []
+    for row in rows:
+        payload = row.gateway_payload or {}
+        if isinstance(payload, str):
+            payload = json.loads(payload)
+        status_code = int(row.status_code or 0)
+        messages = None
+        if include_messages and payload.get('messages') is not None:
+            messages = tuple(UsageMessage(
+                role=message['role'],content=message['content'],
+                message_id=message.get('message_id'),metadata=message.get('metadata'),
+                token_count=message.get('token_count'),
+                created_at=datetime.fromisoformat(message['created_at']) if message.get('created_at') else None,
+            ) for message in payload.get('messages', []))
+        records.append(UsageRecord(
+        id=f"gateway:{row.id}", record_type="gateway", project_id=str(row.project_id or ZERO_UUID),
+        project_name="SmartBrain Gateway", employee_id=str(row.employee_id),
+        employee_name=str(row.employee_name), source="ai_gateway", title=payload.get('title') or "Gateway 请求",
+        started_at=row.started_at, ended_at=row.completed_at, task_id=str(row.id),
+        task_title="AI Gateway", model=str(row.model or row.request_model or "unknown"),
+        status="ok" if 200 <= int(row.status_code or 0) < 400 else "error",
+        prompt_tokens=int(row.input_tokens or 0), completion_tokens=int(row.output_tokens or 0),
+        total_tokens=int(row.total_tokens or 0), cost=float(row.total_cost_usd or 0),
+        error_count=0 if 200 <= status_code < 400 else 1, message_count=int(row.message_count or 0),
+        owner_user_id=str(row.user_id),usage_missing=bool(row.usage_missing),usage_date=row.usage_date,
+        request_id=str(row.admission_id) if row.admission_id else None,
+        gateway_instance_id=row.gateway_instance_id,key_id=str(row.key_id) if row.key_id else None,
+        conversation_id=payload.get('conversation_id'),status_code=status_code,
+        content_complete=payload.get('content_complete') is True and 200 <= status_code < 400,
+        context_source=payload.get('context_source') or 'legacy_unknown',
+        request_message_count=payload.get('request_message_count'),messages=messages,
+        messages_truncated=payload.get('messages_truncated') is True,
+        **gateway_tokens.from_ledger(row),
+    ))
+    return records
+
+
+
+@router.get('/ai-usage/gateway-requests/{request_id}/content')
+def get_gateway_request_content(request: Request, request_id: uuid.UUID,
+        offset: int = Query(0, ge=0, le=2147483647),
+        snapshot_sha256: str | None = Query(None, pattern=r'^[a-f0-9]{64}$'),
+        orm: Session = Depends(get_orm_session)):
+    try:
+        caller = current_user_id(request)
+    except AuthzError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+    # Every fragment reads current ACL and the same immutable source. Never
+    # authorize through a mutable chat projection or an employee alias.
+    row = orm.execute(text(f"""
+        SELECT a.event_sha256 AS snapshot_sha256,
+            char_length({gateway_content.MESSAGE_TEXT_SQL}) AS total_characters,
+            substring({gateway_content.MESSAGE_TEXT_SQL} FROM :start FOR :length) AS fragment
+        FROM public.ai_gateway_admissions a
+        JOIN public.ai_gateway_events e ON e.event_id=a.id::text
+          AND e.user_id=a.user_id AND e.gateway_instance_id=a.gateway_instance_id
+        WHERE a.id=CAST(:request_id AS uuid) AND {gateway_content.READABLE_SQL}
+    """), {'caller':str(caller),'request_id':str(request_id),
+        'start':offset+1,'length':gateway_content.CONTENT_FRAGMENT_CHARACTERS}).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail='Gateway request not available')
+    if snapshot_sha256 is not None and snapshot_sha256 != row.snapshot_sha256:
+        raise HTTPException(status_code=409, detail='Gateway snapshot changed')
+    if offset >= row.total_characters:
+        raise HTTPException(status_code=416, detail='Gateway content offset outside snapshot')
+    next_offset = offset + len(row.fragment)
+    return {'request_id':str(request_id),'offset':offset,'fragment':row.fragment,
+        'next_offset':next_offset if next_offset < row.total_characters else None,
+        'total_characters':row.total_characters,'snapshot_sha256':row.snapshot_sha256}
+
+
+def _cc_switch_has_authoritative_coverage(
+    orm: Session,
+    *,
+    employee_id: str,
+    owner_user_id: uuid.UUID,
+    start_date: date,
+    end_date: date,
+) -> bool:
+    row = orm.execute(
+        text("""
+            SELECT EXISTS (
+                SELECT 1
+                FROM public.cc_switch_usage_sync_status
+                WHERE user_id = CAST(:owner AS uuid)
+                  AND status = 'ok'
+                  AND range_start <= :start_date
+                  AND range_end >= :end_date
+            ) AS covered
+        """),
+        {
+            "employee_id": employee_id,
+            "owner": str(owner_user_id),
+            "start_date": start_date,
+            "end_date": end_date,
+        },
+    ).first()
+    return bool(getattr(row, "covered", False))
+
+
+def _collect_usage(
+    orm: Session,
+    clickhouse: Any,
+    *,
+    employee: UsageEmployeeOption,
+    start_date: date,
+    end_date: date,
+    source: AIUsageSource | None,
+    record_limit: int,
+    include_messages: bool,
+    viewer_user_id: uuid.UUID,
+) -> tuple[UsageSummary, list[UsageRecord], bool, list[str]]:
+    if source not in {None, 'ai_gateway'}:
+        raise HTTPException(status_code=410, detail='legacy_monitor_retired: 旧采集仅保留归档，当前统计只接受个人 API Key Gateway。')
+    start_utc, _ = business_day_utc_bounds(start_date)
+    _, end_utc = business_day_utc_bounds(end_date)
+    if employee.user_id is None:
+        raise ValueError('Usage collection requires a real owner UUID')
+    # Totals and private details use the same admitted-key ledger, with the
+    # existing live detail ACL rechecked separately. No client-reported fallback.
+    records = _gateway_records(orm, employee_id=employee.id, owner_user_id=employee.user_id,
+        start_utc=start_utc, end_utc=end_utc)
+    summary = build_usage_summary(records, start_date=start_date, end_date=end_date)
+    details = _gateway_records(orm, employee_id=employee.id, owner_user_id=employee.user_id,
+        start_utc=start_utc, end_utc=end_utc, detail_viewer_user_id=viewer_user_id)
+    details.sort(key=lambda item: (item.started_at, item.id), reverse=True)
+    has_more = len(details) > record_limit
+    visible = details[:record_limit]
+    if include_messages and visible:
+        current = _gateway_records(orm, employee_id=employee.id, owner_user_id=employee.user_id,
+            start_utc=start_utc, end_utc=end_utc, detail_viewer_user_id=viewer_user_id,
+            include_messages=True, event_ids=[item.id.removeprefix('gateway:') for item in visible])
+        by_id = {item.id: item for item in current}
+        visible = [by_id[item.id] for item in visible if item.id in by_id]
+    return summary, visible, has_more, ['当前统计只包含个人 API Key 的 Gateway 请求；旧 Monitor / CC Switch 记录保留归档，不参与合计。']
+
+
+
+def _summary_response(summary: UsageSummary) -> UsageSummaryResponse:
+    return UsageSummaryResponse.model_validate(asdict(summary))
+
+
+def _record_response(record: UsageRecord) -> UsageRecordResponse:
+    payload = asdict(record)
+    payload["total_tokens"] = record.effective_total_tokens
+    if record.usage_missing:
+        for field in ('total_tokens','prompt_tokens','completion_tokens'):payload[field]=None
+    return UsageRecordResponse.model_validate(payload)
+
+
+def _audit(
+    orm: Session,
+    request: Request,
+    *,
+    user_id: uuid.UUID,
+    action: str,
+    employee_id: str,
+    projects: list[UsageProjectOption],
+    start_date: date,
+    end_date: date,
+    result_status: str,
+    background_tasks: BackgroundTasks | None = None,
+) -> None:
+    audit_arguments = {
+        "user_id": user_id,
+        "action": action,
+        "resource_type": "ai_usage",
+        "resource_id": employee_id,
+        "metadata": {
+            "employee_id": employee_id,
+            "project_ids": [str(item.id) for item in projects],
+            "start_date": start_date.isoformat(),
+            "end_date": end_date.isoformat(),
+            "result_status": result_status,
+        },
+        "request": request,
+    }
+    if background_tasks is not None:
+        schedule_deduplicated_audit(background_tasks, **audit_arguments)
+        return
+    record_audit(orm, **audit_arguments)
+
+
+_LEADERBOARD_SOURCE_LABELS = {
+    "ai_gateway": "SmartBrain Gateway",
+    "cc_switch": "CC Switch",
+    "chatgpt_web": "ChatGPT Web",
+    "chatgpt_desktop": "ChatGPT Desktop",
+    "openai_compliance": "OpenAI Compliance",
+    "smartbrain": "智慧大脑",
+}
+
+_LEADERBOARD_APP_LABELS = {
+    "codex": "Codex",
+    "claude": "Claude",
+    "gemini": "Gemini",
+    "cc_switch_fallback": "其他 CC Switch",
+    "chatgpt_web": "ChatGPT Web",
+    "chatgpt_desktop": "ChatGPT Desktop",
+    "openai_compliance": "OpenAI Compliance",
+    "smartbrain": "智慧大脑",
+    "unknown": "其他应用",
+}
+
+
+def _leaderboard_distribution(
+    values: dict[str, dict[str, int]],
+    *,
+    labels: dict[str, str] | None = None,
+) -> list[UsageLeaderboardDistributionPoint]:
+    denominator = sum(max(int(item["total_tokens"]), 0) for item in values.values())
+    rows = sorted(
+        values.items(),
+        key=lambda item: (-int(item[1]["total_tokens"]), item[0]),
+    )
+    return [
+        UsageLeaderboardDistributionPoint(
+            key=key,
+            label=(labels or {}).get(key, key),
+            total_tokens=max(int(value["total_tokens"]), 0),
+            request_count=max(int(value.get("request_count", 0)), 0),
+            usage_missing_count=max(int(value.get("usage_missing_count", 0)), 0),
+            percentage=round(
+                max(int(value["total_tokens"]), 0) * 100 / denominator,
+                2,
+            ) if denominator else 0.0,
+        )
+        for key, value in rows
+        if int(value.get("request_count", 0)) > 0 or int(value["total_tokens"]) > 0
+    ]
+
+
+@router.post(
+    "/ai-usage/temporary-monitor-probes",
+    response_model=TemporaryMonitorProbeCreateResponse,
+)
+def create_temporary_monitor_probe(
+    request: Request,
+    orm: Session = Depends(get_orm_session),
+) -> TemporaryMonitorProbeCreateResponse:
+    raise HTTPException(status_code=410, detail="legacy_monitor_retired: 旧 Monitor 采集已停用，请使用个人 API Key 的 Gateway。")
+    try:
+        user_id = current_user_id(request)
+    except AuthzError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+    now = datetime.now(timezone.utc)
+    probe_token = secrets.token_urlsafe(32)
+    row = orm.execute(
+        text("""
+            INSERT INTO public.cc_switch_temporary_monitor_probes (
+                target_user_id, probe_token_hash, expires_at
+            ) VALUES (:target_user_id, :probe_token_hash, :expires_at)
+            RETURNING id, expires_at
+        """),
+        {
+            "target_user_id": str(user_id),
+            "probe_token_hash": _shared_token_hash(probe_token),
+            "expires_at": now + TEMPORARY_MONITOR_PROBE_TTL,
+        },
+    ).first()
+    orm.commit()
+    return TemporaryMonitorProbeCreateResponse(
+        id=row.id,
+        probe_token=probe_token,
+        expires_at=row.expires_at,
+    )
+
+
+@router.get(
+    "/ai-usage/temporary-monitor-probes/{probe_id}",
+    response_model=TemporaryMonitorProbeResponse,
+)
+def get_temporary_monitor_probe(
+    request: Request,
+    probe_id: uuid.UUID,
+    orm: Session = Depends(get_orm_session),
+) -> TemporaryMonitorProbeResponse:
+    try:
+        user_id = current_user_id(request)
+    except AuthzError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+    row = orm.execute(
+        text("""
+            SELECT id, target_user_id, expires_at, detected_at, consumed_at,
+                   device_id, installer_version
+            FROM public.cc_switch_temporary_monitor_probes
+            WHERE id = :probe_id AND target_user_id = :target_user_id
+        """),
+        {"probe_id": str(probe_id), "target_user_id": str(user_id)},
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="temporary monitor probe not found")
+    return _temporary_monitor_probe_response(row)
+
+
+@device_router.post(
+    "/ai-usage/temporary-monitor-probes/device-confirm",
+    response_model=TemporaryMonitorProbeResponse,
+)
+def confirm_temporary_monitor_probe(
+    body: TemporaryMonitorProbeConfirmRequest,
+    orm: Session = Depends(get_orm_session),
+) -> TemporaryMonitorProbeResponse:
+    raise HTTPException(status_code=410, detail="legacy_monitor_retired: 旧 Monitor 采集已停用，请使用个人 API Key 的 Gateway。")
+    now = datetime.now(timezone.utc)
+    row = orm.execute(
+        text("""
+            UPDATE public.cc_switch_temporary_monitor_probes
+            SET detected_at = :detected_at,
+                device_id = :device_id,
+                installer_version = :installer_version
+            WHERE id = :probe_id
+              AND probe_token_hash = :probe_token_hash
+              AND expires_at > :detected_at
+              AND consumed_at IS NULL
+            RETURNING id, target_user_id, expires_at, detected_at, consumed_at,
+                      device_id, installer_version
+        """),
+        {
+            "probe_id": str(body.probe_id),
+            "probe_token_hash": _shared_token_hash(body.probe_token),
+            "detected_at": now,
+            "device_id": body.device_id,
+            "installer_version": body.installer_version,
+        },
+    ).first()
+    if row is None:
+        orm.rollback()
+        raise HTTPException(status_code=404, detail="temporary monitor probe is invalid or expired")
+    orm.commit()
+    return _temporary_monitor_probe_response(row)
+
+
+@router.post("/ai-usage/shared-sessions/start", response_model=SharedSessionResponse)
+def start_shared_session(
+    request: Request,
+    body: SharedSessionStartRequest,
+    orm: Session = Depends(get_orm_session),
+) -> SharedSessionResponse:
+    raise HTTPException(status_code=410, detail="legacy_monitor_retired: 旧 Monitor 采集已停用，请使用个人 API Key 的 Gateway。")
+    try:
+        user_id = current_user_id(request)
+    except AuthzError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+    now = datetime.now(timezone.utc)
+    probe = orm.execute(
+        text("""
+            SELECT id, device_id, installer_version, detected_at
+            FROM public.cc_switch_temporary_monitor_probes
+            WHERE id = :probe_id
+              AND target_user_id = :target_user_id
+              AND detected_at IS NOT NULL
+              AND consumed_at IS NULL
+              AND expires_at > :now
+              AND detected_at >= :minimum_detected_at
+            FOR UPDATE
+        """),
+        {
+            "probe_id": str(body.installation_probe_id),
+            "target_user_id": str(user_id),
+            "now": now,
+            "minimum_detected_at": now - TEMPORARY_MONITOR_PROBE_DETECTION_MAX_AGE,
+        },
+    ).first()
+    if probe is None:
+        raise HTTPException(
+            status_code=409,
+            detail="detect the Temporary Token Monitor before starting a session",
+        )
+    employee = _current_employee(orm, user_id)
+    _expire_stale_shared_sessions(orm, target_user_id=user_id)
+    existing = orm.execute(
+        text("""
+            SELECT id
+            FROM public.cc_switch_attribution_sessions
+            WHERE target_user_id = :target_user_id
+              AND status IN ('starting', 'active', 'finalizing', 'pending_sync')
+            LIMIT 1
+        """),
+        {"target_user_id": str(user_id)},
+    ).first()
+    if existing is not None:
+        raise HTTPException(status_code=409, detail="this member already has an active shared session")
+    stop_at = resolve_shared_session_stop_at(
+        stop_mode=body.stop_mode,
+        scheduled_stop_at=body.scheduled_stop_at,
+        now=now,
+    )
+    activation_token = secrets.token_urlsafe(32)
+    try:
+        row = orm.execute(
+            text("""
+            INSERT INTO public.cc_switch_attribution_sessions (
+                project_id, target_user_id,
+                target_employee_id, target_employee_name,
+                stop_mode, activation_token_hash,
+                activation_expires_at, requested_at, scheduled_stop_at
+            ) VALUES (
+                :project_id, :target_user_id,
+                :target_employee_id, :target_employee_name,
+                :stop_mode, :activation_token_hash,
+                :activation_expires_at, :requested_at, :scheduled_stop_at
+            )
+            RETURNING id, project_id, target_user_id,
+                      target_employee_id, target_employee_name,
+                      device_id, stop_mode, stop_reason, status,
+                      activation_token_hash, activation_expires_at,
+                      requested_at, started_at, scheduled_stop_at,
+                      actual_stop_at, request_count, total_tokens,
+                      last_synced_at, last_synced_watermark,
+                      finalized_at, error_message
+            """),
+            {
+            "project_id": None,
+            "target_user_id": str(user_id),
+            "target_employee_id": employee.id,
+            "target_employee_name": employee.name,
+            "stop_mode": body.stop_mode,
+            "activation_token_hash": _shared_token_hash(activation_token),
+            "activation_expires_at": now + SHARED_SESSION_ACTIVATION_TTL,
+            "requested_at": now,
+            "scheduled_stop_at": stop_at,
+            },
+        ).first()
+        orm.execute(
+            text("""
+                UPDATE public.cc_switch_temporary_monitor_probes
+                SET consumed_at = :consumed_at
+                WHERE id = :probe_id AND target_user_id = :target_user_id
+            """),
+            {
+                "probe_id": str(body.installation_probe_id),
+                "target_user_id": str(user_id),
+                "consumed_at": now,
+            },
+        )
+        orm.commit()
+    except Exception as error:
+        try:
+            orm.rollback()
+        except Exception:
+            pass
+        if "uq_cc_switch_attribution_active_member" in str(error):
+            raise HTTPException(
+                status_code=409,
+                detail="this member already has an active shared session",
+            ) from error
+        raise
+    _shared_session_audit(
+        orm,
+        request,
+        user_id=user_id,
+        action="ai_shared_session_start",
+        row=row,
+        metadata={
+            "stop_mode": body.stop_mode,
+            "scheduled_stop_at": stop_at.isoformat(),
+            "installation_probe_id": str(body.installation_probe_id),
+            "device_id": probe.device_id,
+            "installer_version": probe.installer_version,
+        },
+    )
+    return _shared_session_response(row, activation_token=activation_token)
+
+
+@router.get("/ai-usage/shared-sessions/current", response_model=SharedSessionResponse | None)
+def get_current_shared_session(
+    request: Request,
+    orm: Session = Depends(get_orm_session),
+) -> SharedSessionResponse | None:
+    try:
+        user_id = current_user_id(request)
+    except AuthzError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+    _expire_stale_shared_sessions(orm, target_user_id=user_id)
+    row = orm.execute(
+        text("""
+            SELECT id, project_id, target_user_id,
+                   target_employee_id, target_employee_name,
+                   device_id, stop_mode, stop_reason, status,
+                   activation_token_hash, activation_expires_at,
+                   requested_at, started_at, scheduled_stop_at,
+                   actual_stop_at, request_count, total_tokens,
+                   last_synced_at, last_synced_watermark,
+                   finalized_at, error_message
+            FROM public.cc_switch_attribution_sessions
+            WHERE target_user_id = :target_user_id
+              AND status IN ('starting', 'active', 'finalizing', 'pending_sync')
+            ORDER BY requested_at DESC
+            LIMIT 1
+        """),
+        {"target_user_id": str(user_id)},
+    ).first()
+    return _shared_session_response(row) if row else None
+
+
+@router.get(
+    "/ai-usage/shared-sessions/{session_id}",
+    response_model=SharedSessionResponse,
+)
+def get_shared_session(
+    request: Request,
+    session_id: uuid.UUID,
+    orm: Session = Depends(get_orm_session),
+) -> SharedSessionResponse:
+    try:
+        user_id = current_user_id(request)
+    except AuthzError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+    row = _get_shared_session(orm, session_id=session_id, target_user_id=user_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="shared session not found")
+    return _shared_session_response(row)
+
+
+@router.patch(
+    "/ai-usage/shared-sessions/{session_id}/schedule",
+    response_model=SharedSessionResponse,
+)
+def update_shared_session_schedule(
+    request: Request,
+    session_id: uuid.UUID,
+    body: SharedSessionScheduleRequest,
+    orm: Session = Depends(get_orm_session),
+) -> SharedSessionResponse:
+    try:
+        user_id = current_user_id(request)
+    except AuthzError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+    existing = _get_shared_session(orm, session_id=session_id, target_user_id=user_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="shared session not found")
+    if existing.status not in {"starting", "active"}:
+        raise HTTPException(status_code=409, detail="shared session can no longer be rescheduled")
+    stop_at = resolve_shared_session_stop_at(
+        stop_mode=body.stop_mode,
+        scheduled_stop_at=body.scheduled_stop_at,
+    )
+    row = orm.execute(
+        text("""
+            UPDATE public.cc_switch_attribution_sessions
+            SET stop_mode = :stop_mode,
+                scheduled_stop_at = :scheduled_stop_at,
+                updated_at = now()
+            WHERE id = :session_id
+            RETURNING id, project_id, target_user_id,
+                      target_employee_id, target_employee_name,
+                      device_id, stop_mode, stop_reason, status,
+                      activation_token_hash, activation_expires_at,
+                      requested_at, started_at, scheduled_stop_at,
+                      actual_stop_at, request_count, total_tokens,
+                      last_synced_at, last_synced_watermark,
+                      finalized_at, error_message
+        """),
+        {
+            "session_id": str(session_id),
+            "stop_mode": body.stop_mode,
+            "scheduled_stop_at": stop_at,
+        },
+    ).first()
+    orm.commit()
+    _shared_session_audit(
+        orm,
+        request,
+        user_id=user_id,
+        action="ai_shared_session_schedule",
+        row=row,
+        metadata={"stop_mode": body.stop_mode, "scheduled_stop_at": stop_at.isoformat()},
+    )
+    return _shared_session_response(row)
+
+
+@router.post(
+    "/ai-usage/shared-sessions/{session_id}/stop",
+    response_model=SharedSessionResponse,
+)
+def stop_shared_session(
+    request: Request,
+    session_id: uuid.UUID,
+    body: SharedSessionStopRequest,
+    orm: Session = Depends(get_orm_session),
+) -> SharedSessionResponse:
+    try:
+        user_id = current_user_id(request)
+    except AuthzError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+    existing = _get_shared_session(orm, session_id=session_id, target_user_id=user_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="shared session not found")
+    if existing.status == "pending_sync":
+        return _shared_session_response(existing)
+    if existing.status not in {"starting", "active"}:
+        raise HTTPException(status_code=409, detail="shared session is already stopped")
+    stopped_at = datetime.now(timezone.utc)
+    status = "finalizing" if existing.device_id else "cancelled"
+    row = orm.execute(
+        text("""
+            UPDATE public.cc_switch_attribution_sessions
+            SET status = :status, stop_reason = :stop_reason,
+                actual_stop_at = :actual_stop_at, updated_at = now()
+            WHERE id = :session_id
+            RETURNING id, project_id, target_user_id,
+                      target_employee_id, target_employee_name,
+                      device_id, stop_mode, stop_reason, status,
+                      activation_token_hash, activation_expires_at,
+                      requested_at, started_at, scheduled_stop_at,
+                      actual_stop_at, request_count, total_tokens,
+                      last_synced_at, last_synced_watermark,
+                      finalized_at, error_message
+        """),
+        {
+            "session_id": str(session_id),
+            "status": status,
+            "stop_reason": body.reason,
+            "actual_stop_at": stopped_at,
+        },
+    ).first()
+    orm.commit()
+    _shared_session_audit(
+        orm,
+        request,
+        user_id=user_id,
+        action="ai_shared_session_stop",
+        row=row,
+        metadata={"stop_reason": body.reason},
+    )
+    return _shared_session_response(row)
+
+
+def _build_ai_usage_leaderboard(
+    orm: Session,
+    *,
+    start_date: date,
+    end_date: date,
+) -> UsageLeaderboardResponse:
+    _, employees_by_user_id = _employee_option_maps(orm)
+    rollup_rows = orm.execute(
+        text("""
+            SELECT e.user_id, max(e.employee_id) AS employee_id, max(e.employee_name) AS employee_name, e.usage_date,
+                   'session' AS origin, 'ai_gateway' AS source, lower(e.app_type) AS app_type,
+                   COALESCE(NULLIF(e.resolved_model, ''), NULLIF(e.model, ''), 'unknown') AS model,
+                   count(*)::bigint AS request_count,
+                   COALESCE(sum(e.input_tokens) FILTER (WHERE NOT e.usage_missing), 0)::bigint AS input_tokens,
+                   COALESCE(sum(e.output_tokens) FILTER (WHERE NOT e.usage_missing), 0)::bigint AS output_tokens,
+                   COALESCE(sum(e.cache_read_tokens) FILTER (WHERE NOT e.usage_missing), 0)::bigint AS cache_read_tokens,
+                   COALESCE(sum(e.cache_creation_tokens) FILTER (WHERE NOT e.usage_missing), 0)::bigint AS cache_creation_tokens,
+                   COALESCE(sum(e.total_tokens) FILTER (WHERE NOT e.usage_missing), 0)::bigint AS total_tokens,
+                   count(*) FILTER (WHERE e.status_code < 200 OR e.status_code >= 400)::bigint AS error_count,
+                   sum(e.total_cost_usd)::double precision AS total_cost,
+                   count(*) FILTER (WHERE e.usage_missing)::bigint AS usage_missing_count
+            FROM public.ai_gateway_events e
+            JOIN public.ai_gateway_admissions a ON a.id::text=e.event_id
+              AND a.user_id=e.user_id AND a.gateway_instance_id=e.gateway_instance_id
+              AND a.key_id=e.key_id AND a.delivered_at IS NOT NULL
+            WHERE e.usage_date >= :start_date AND e.usage_date <= :end_date
+            GROUP BY e.user_id, e.usage_date, lower(e.app_type),
+                     COALESCE(NULLIF(e.resolved_model, ''), NULLIF(e.model, ''), 'unknown')
+            ORDER BY employee_id, usage_date
+        """),
+        {"start_date": start_date, "end_date": end_date},
+    ).all()
+    session_rows = rollup_rows
+
+    members: dict[str, dict[str, Any]] = {}
+    daily: dict[date, dict[str, Any]] = {}
+    source_usage: dict[str, dict[str, int]] = {}
+    app_usage: dict[str, dict[str, int]] = {}
+    model_usage: dict[str, dict[str, int]] = {}
+    token_usage: dict[str, dict[str, int]] = {
+        "input": {"total_tokens": 0, "request_count": 0},
+        "output": {"total_tokens": 0, "request_count": 0},
+        "cache_read": {"total_tokens": 0, "request_count": 0},
+        "cache_creation": {"total_tokens": 0, "request_count": 0},
+        "other": {"total_tokens": 0, "request_count": 0},
+    }
+    official_seen: set[str] = set()
+    warnings: set[str] = {'仅统计个人 API Key 的 Gateway 请求；旧 Monitor 记录保留归档，不计入当前合计。'}
+
+    def add_distribution(
+        target: dict[str, dict[str, int]],
+        key: str,
+        total_tokens: int,
+        request_count: int,
+        usage_missing_count: int = 0,
+    ) -> None:
+        item = target.setdefault(key, {"total_tokens": 0, "request_count": 0})
+        item["total_tokens"] += total_tokens
+        item["request_count"] += request_count
+        item["usage_missing_count"] = item.get("usage_missing_count", 0) + usage_missing_count
+
+    def add_row(
+        *,
+        user_id: uuid.UUID | str | None,
+        employee_id: str,
+        employee_name: str,
+        usage_date: date,
+        source: str,
+        app: str,
+        model: str,
+        request_count: int,
+        input_tokens: int,
+        output_tokens: int,
+        cache_read_tokens: int,
+        cache_creation_tokens: int,
+        total_tokens: int,
+        error_count: int,
+        total_cost: float,
+        is_official: bool,
+        usage_missing_count: int = 0,
+    ) -> None:
+        option = employees_by_user_id.get(str(user_id)) if user_id else None
+        # A stale or unknown UUID must never acquire a current account by alias.
+        # Keep its stored history for a separate provenance/lifecycle audit.
+        if option is None:
+            return
+        owner_id = str(option.user_id)
+        member = members.setdefault(
+            owner_id,
+            {
+                "owner_user_id": owner_id,
+                "employee_id": option.id,
+                "employee_name": option.name,
+                "account": option.email,
+                "total_tokens": 0,
+                "request_count": 0,
+                "days": set(),
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "cache_read_tokens": 0,
+                "cache_creation_tokens": 0,
+                "error_count": 0,
+                "total_cost": 0.0,
+                "usage_missing_count": 0,
+            },
+        )
+        member["total_tokens"] += total_tokens
+        member["request_count"] += request_count
+        member["usage_missing_count"] += usage_missing_count
+        member["days"].add(usage_date)
+        member["input_tokens"] += input_tokens
+        member["output_tokens"] += output_tokens
+        member["cache_read_tokens"] += cache_read_tokens
+        member["cache_creation_tokens"] += cache_creation_tokens
+        member["error_count"] += error_count
+        member["total_cost"] += total_cost
+        if is_official:
+            official_seen.add(owner_id)
+
+        day = daily.setdefault(
+            usage_date,
+            {"total_tokens": 0, "request_count": 0, "users": set(), "usage_missing_count": 0},
+        )
+        day["total_tokens"] += total_tokens
+        day["request_count"] += request_count
+        day["usage_missing_count"] += usage_missing_count
+        day["users"].add(owner_id)
+        add_distribution(source_usage, source, total_tokens, request_count, usage_missing_count)
+        add_distribution(app_usage, app, total_tokens, request_count, usage_missing_count)
+        add_distribution(model_usage, model or "unknown", total_tokens, request_count, usage_missing_count)
+        token_usage["input"]["total_tokens"] += input_tokens
+        token_usage["output"]["total_tokens"] += output_tokens
+        token_usage["cache_read"]["total_tokens"] += cache_read_tokens
+        token_usage["cache_creation"]["total_tokens"] += cache_creation_tokens
+        known_tokens = input_tokens + output_tokens + cache_read_tokens + cache_creation_tokens
+        token_usage["other"]["total_tokens"] += max(total_tokens - known_tokens, 0)
+
+    for row in session_rows:
+        employee_id = str(row.employee_id)
+        option = employees_by_user_id.get(str(getattr(row, "user_id", "")))
+        owner_id = str(option.user_id) if option else ""
+        source = str(row.source or "unknown")
+        add_row(
+            user_id=getattr(row, "user_id", None),
+            employee_id=employee_id,
+            employee_name=str(row.employee_name or employee_id),
+            usage_date=row.usage_date,
+            source=source,
+            app="cc_switch_fallback" if source == "cc_switch" else str(row.app_type or source),
+            model=str(row.model or "unknown"),
+            request_count=int(row.request_count or 0),
+            input_tokens=int(row.input_tokens or 0),
+            output_tokens=int(row.output_tokens or 0),
+            cache_read_tokens=int(row.cache_read_tokens or 0),
+            cache_creation_tokens=int(row.cache_creation_tokens or 0),
+            total_tokens=int(row.total_tokens or 0),
+            error_count=int(row.error_count or 0),
+            total_cost=float(row.total_cost or 0),
+            is_official=False,
+            usage_missing_count=int(getattr(row, "usage_missing_count", 0) or 0),
+        )
+
+    # Keep usage records even when the upstream did not expose token counts.
+    # Gateway events explicitly mark this as `usage_missing`; dropping the
+    # row here made the database rollup disagree with the leaderboard and hid
+    # real requests from operators.
+    member_values = [
+        item
+        for item in members.values()
+        if int(item["request_count"]) > 0 or int(item["total_tokens"]) > 0
+    ]
+    member_values.sort(
+        key=lambda item: (
+            -int(item["total_tokens"]),
+            -int(item["request_count"]),
+            str(item["employee_name"]),
+        )
+    )
+    total_tokens = sum(int(item["total_tokens"]) for item in member_values)
+    request_count = sum(int(item["request_count"]) for item in member_values)
+    usage_missing_count = sum(int(item["usage_missing_count"]) for item in member_values)
+    member_rows = [
+        UsageLeaderboardMember(
+            rank=index,
+            owner_user_id=item["owner_user_id"],
+            employee_id=str(item["employee_id"]),
+            employee_name=str(item["employee_name"]),
+            account=str(item["account"]),
+            total_tokens=int(item["total_tokens"]),
+            request_count=int(item["request_count"]),
+            usage_missing_count=int(item["usage_missing_count"]),
+            token_totals_complete=not item["usage_missing_count"],
+            active_days=len(item["days"]),
+            average_tokens_per_day=None if item["usage_missing_count"] else round(
+                int(item["total_tokens"]) / max(len(item["days"]), 1),
+                2,
+            ),
+            average_tokens_per_request=None if item["usage_missing_count"] else round(
+                int(item["total_tokens"]) / max(int(item["request_count"]), 1),
+                2,
+            ),
+            share_percent=None if usage_missing_count else (
+                round(int(item["total_tokens"]) * 100 / total_tokens, 2) if total_tokens else 0.0),
+            input_tokens=int(item["input_tokens"]),
+            output_tokens=int(item["output_tokens"]),
+            cache_read_tokens=int(item["cache_read_tokens"]),
+            cache_creation_tokens=int(item["cache_creation_tokens"]),
+            error_count=int(item["error_count"]),
+            total_cost=round(float(item["total_cost"]), 6),
+            official_cc_switch=str(item["owner_user_id"]) in official_seen,
+        )
+        for index, item in enumerate(member_values, start=1)
+    ]
+    daily_rows = [
+        UsageLeaderboardDailyPoint(
+            date=usage_date,
+            total_tokens=int(item["total_tokens"]),
+            request_count=int(item["request_count"]),
+            active_users=len(item["users"]),
+            usage_missing_count=int(item["usage_missing_count"]),
+            token_totals_complete=not item["usage_missing_count"],
+        )
+        for usage_date, item in sorted(daily.items())
+    ]
+    period_days = (end_date - start_date).days + 1
+    if "ai_gateway" in source_usage and "cc_switch" in source_usage:
+        warnings.add("当前区间同时包含 Gateway 与 CC Switch；旧采集尚无逐请求对应关系，合计可能重复，不能作为已去重核算值。")
+    return UsageLeaderboardResponse(
+        start_date=start_date,
+        end_date=end_date,
+        period_days=period_days,
+        total_tokens=total_tokens,
+        request_count=request_count,
+        active_users=len(member_rows),
+        active_days=len(daily_rows),
+        average_tokens_per_user=None if usage_missing_count else round(total_tokens / max(len(member_rows), 1), 2),
+        official_cc_switch_users=len(official_seen),
+        usage_missing_count=usage_missing_count,
+        token_totals_complete=not usage_missing_count,
+        members=member_rows,
+        daily_usage=daily_rows,
+        source_usage=_leaderboard_distribution(
+            source_usage,
+            labels=_LEADERBOARD_SOURCE_LABELS,
+        ),
+        app_usage=_leaderboard_distribution(
+            app_usage,
+            labels=_LEADERBOARD_APP_LABELS,
+        ),
+        token_usage=_leaderboard_distribution(
+            token_usage,
+            labels={
+                "input": "新鲜输入",
+                "output": "模型输出",
+                "cache_read": "缓存读取",
+                "cache_creation": "缓存写入",
+                "other": "其他 Token",
+            },
+        ),
+        model_usage=_leaderboard_distribution(model_usage),
+        warnings=sorted(warnings),
+    )
+
+
+@device_router.post(
+    "/ai-usage/cc-switch-sync/device-ingest",
+    response_model=CCSwitchUsageSyncResponse,
+)
+def device_ingest_cc_switch_usage(
+    request: Request,
+    body: CCSwitchUsageSyncRequest,
+    orm: Session = Depends(get_orm_session),
+) -> CCSwitchUsageSyncResponse:
+    raise HTTPException(status_code=410, detail="legacy_monitor_retired: 旧 Monitor 采集已停用，请使用个人 API Key 的 Gateway。")
+    claims = _device_claims(request)
+    if str(body.project_id) != str(claims["project_id"]):
+        raise HTTPException(
+            status_code=403,
+            detail="device credential does not belong to this project",
+        )
+    if body.range_end < body.range_start:
+        raise HTTPException(status_code=422, detail="range_end must not precede range_start")
+    if (body.range_end - body.range_start).days > 3650:
+        raise HTTPException(status_code=422, detail="sync range is too large")
+    if body.status == "ok" and body.sync_protocol_version < 2:
+        raise HTTPException(
+            status_code=409,
+            detail="AI Monitor r16 or newer is required for CC Switch usage sync",
+        )
+    if body.status == "ok" and not body.cc_switch_running:
+        raise HTTPException(status_code=422, detail="CC Switch must be running for a successful sync")
+    if any(
+        row.usage_date < body.range_start or row.usage_date > body.range_end
+        for row in body.rows
+    ):
+        raise HTTPException(status_code=422, detail="usage row falls outside the declared range")
+    target_dates = list(body.changed_dates)
+    if body.sync_protocol_version < 3:
+        target_dates = [
+            body.range_start + timedelta(days=offset)
+            for offset in range((body.range_end - body.range_start).days + 1)
+        ]
+    if any(day < body.range_start or day > body.range_end for day in target_dates):
+        raise HTTPException(status_code=422, detail="changed date falls outside the declared range")
+    target_date_set = set(target_dates)
+    if body.sync_protocol_version >= 3 and any(
+        row.usage_date not in target_date_set for row in body.rows
+    ):
+        raise HTTPException(status_code=422, detail="usage row is not declared as changed")
+    request_state = getattr(request, "state", None)
+    if ingest_queue.enabled() and not getattr(request_state, "process_ingest_now", False):
+        receipt = ingest_queue.enqueue(
+            orm,
+            stream="cc-switch-usage",
+            payload=body.model_dump(mode="json"),
+            claims=claims,
+        )
+        employee_id = str(claims.get("employee_id") or "").strip()
+        employee_name = str(claims.get("employee_name") or employee_id).strip()
+        return CCSwitchUsageSyncResponse(
+            delivery_status="synced" if receipt.status == "synced" else "accepted",
+            receipt_id=receipt.id,
+            status=body.status,
+            employee_id=employee_id,
+            employee_name=employee_name,
+            device_id=body.device_id,
+            trigger=body.trigger,
+            request_id=body.request_id,
+            range_start=body.range_start,
+            range_end=body.range_end,
+            row_count=len(body.rows),
+            request_count=body.request_count,
+            total_tokens=body.total_tokens,
+            attempted_at=body.attempted_at,
+            synced_at=receipt.synced_at,
+            error_message=body.error_message,
+        )
+    normalized_rows = [
+        (
+            row,
+            cc_switch_total_tokens(
+                app_type=row.app_type,
+                input_tokens=row.input_tokens,
+                output_tokens=row.output_tokens,
+                cache_read_tokens=row.cache_read_tokens,
+                cache_creation_tokens=row.cache_creation_tokens,
+                input_token_semantics=row.input_token_semantics,
+            ),
+        )
+        for row in body.rows
+    ]
+    # Protocol v3 only transmits changed daily rows, while request_count and
+    # total_tokens describe the complete authoritative snapshot range. Keep
+    # those snapshot totals in sync status and responses; row-level totals are
+    # still recomputed below before each changed row is stored.
+    normalized_total_tokens = body.total_tokens
+    if body.status == "ok" and body.sync_protocol_version < 3:
+        normalized_total_tokens = sum(
+            total_tokens for _, total_tokens in normalized_rows
+        )
+
+    user_id = uuid.UUID(str(claims["sub"]))
+    employee_id = str(claims.get("employee_id") or "").strip()
+    employee_name = str(claims.get("employee_name") or employee_id).strip()
+    if not employee_id:
+        raise HTTPException(status_code=401, detail="device credential has no employee identity")
+    synced_at = datetime.now(timezone.utc)
+
+    def sync_response(response_synced_at: datetime | None) -> CCSwitchUsageSyncResponse:
+        return CCSwitchUsageSyncResponse(
+            status=body.status,
+            employee_id=employee_id,
+            employee_name=employee_name,
+            device_id=body.device_id,
+            trigger=body.trigger,
+            request_id=body.request_id,
+            range_start=body.range_start,
+            range_end=body.range_end,
+            row_count=len(body.rows),
+            request_count=body.request_count,
+            total_tokens=normalized_total_tokens,
+            attempted_at=body.attempted_at,
+            synced_at=response_synced_at,
+            error_message=body.error_message,
+        )
+
+    try:
+        ingest_accepted_at, ingest_receipt_id = _resolve_ingest_order(
+            orm,
+            request,
+            direct_attempted_at=body.attempted_at,
+            request_id=body.request_id,
+        )
+        orm.execute(
+            text("""
+                SELECT pg_advisory_xact_lock(hashtextextended(:lock_key, 0))
+            """),
+            {"lock_key": f"cc-switch-usage:{user_id}:{body.device_id}"},
+        )
+        existing_status = orm.execute(
+            text("""
+                SELECT last_success_at,
+                       last_ingest_accepted_at,
+                       last_ingest_receipt_id,
+                       last_success_ingest_accepted_at,
+                       last_success_ingest_receipt_id
+                FROM public.cc_switch_usage_sync_status
+                WHERE user_id = :user_id AND device_id = :device_id
+                FOR UPDATE
+            """),
+            {"user_id": str(user_id), "device_id": body.device_id},
+        ).first()
+        apply_latest_status = existing_status is None or _is_newer_ingest_order(
+            incoming_at=ingest_accepted_at,
+            incoming_id=ingest_receipt_id,
+            existing_at=getattr(existing_status, "last_ingest_accepted_at", None),
+            existing_id=getattr(existing_status, "last_ingest_receipt_id", None),
+        )
+        apply_success_snapshot = body.status == "ok" and (
+            existing_status is None
+            or _is_newer_ingest_order(
+                incoming_at=ingest_accepted_at,
+                incoming_id=ingest_receipt_id,
+                existing_at=getattr(
+                    existing_status,
+                    "last_success_ingest_accepted_at",
+                    None,
+                ),
+                existing_id=getattr(
+                    existing_status,
+                    "last_success_ingest_receipt_id",
+                    None,
+                ),
+            )
+        )
+        if (body.status == "ok" and not apply_success_snapshot) or (
+            body.status != "ok" and not apply_latest_status
+        ):
+            orm.commit()
+            return sync_response(getattr(existing_status, "last_success_at", None))
+
+        if body.status == "ok" and body.sync_protocol_version < 3:
+            target_dates = _protocol_v2_changed_dates(
+                orm,
+                body=body,
+                user_id=user_id,
+                employee_id=employee_id,
+                employee_name=employee_name,
+                normalized_rows=normalized_rows,
+            )
+
+        if body.status == "ok" and target_dates:
+            orm.execute(
+                text("""
+                    DELETE FROM public.cc_switch_usage_daily
+                    WHERE user_id = :user_id
+                      AND device_id = :device_id
+                      AND usage_date = ANY(CAST(:changed_dates AS date[]))
+                """),
+                {
+                    "user_id": str(user_id),
+                    "device_id": body.device_id,
+                    "changed_dates": target_dates,
+                },
+            )
+            for row, total_tokens in normalized_rows:
+                orm.execute(
+                    text("""
+                        INSERT INTO public.cc_switch_usage_daily (
+                            project_id, user_id, employee_id, employee_name,
+                            device_id, usage_date, app_type, provider_id,
+                            model, request_model, pricing_model,
+                            request_count, success_count,
+                            input_tokens, output_tokens,
+                            cache_read_tokens, cache_creation_tokens,
+                            total_tokens, total_cost_usd,
+                            input_token_semantics, source_table, synced_at
+                        ) VALUES (
+                            :project_id, :user_id, :employee_id, :employee_name,
+                            :device_id, :usage_date, :app_type, :provider_id,
+                            :model, :request_model, :pricing_model,
+                            :request_count, :success_count,
+                            :input_tokens, :output_tokens,
+                            :cache_read_tokens, :cache_creation_tokens,
+                            :total_tokens, :total_cost_usd,
+                            :input_token_semantics, :source_table, :synced_at
+                        )
+                        ON CONFLICT (
+                            user_id, device_id, usage_date, app_type,
+                            provider_id, model, request_model, pricing_model
+                        ) DO UPDATE SET
+                            project_id = excluded.project_id,
+                            employee_id = excluded.employee_id,
+                            employee_name = excluded.employee_name,
+                            request_count = excluded.request_count,
+                            success_count = excluded.success_count,
+                            input_tokens = excluded.input_tokens,
+                            output_tokens = excluded.output_tokens,
+                            cache_read_tokens = excluded.cache_read_tokens,
+                            cache_creation_tokens = excluded.cache_creation_tokens,
+                            total_tokens = excluded.total_tokens,
+                            total_cost_usd = excluded.total_cost_usd,
+                            input_token_semantics = excluded.input_token_semantics,
+                            source_table = excluded.source_table,
+                            synced_at = excluded.synced_at,
+                            updated_at = now()
+                    """),
+                    {
+                        "project_id": str(body.project_id),
+                        "user_id": str(user_id),
+                        "employee_id": employee_id,
+                        "employee_name": employee_name,
+                        "device_id": body.device_id,
+                        "usage_date": row.usage_date,
+                        "app_type": row.app_type,
+                        "provider_id": row.provider_id,
+                        "model": row.model,
+                        "request_model": row.request_model,
+                        "pricing_model": row.pricing_model,
+                        "request_count": row.request_count,
+                        "success_count": row.success_count,
+                        "input_tokens": row.input_tokens,
+                        "output_tokens": row.output_tokens,
+                        "cache_read_tokens": row.cache_read_tokens,
+                        "cache_creation_tokens": row.cache_creation_tokens,
+                        "total_tokens": total_tokens,
+                        "total_cost_usd": row.total_cost_usd,
+                        "input_token_semantics": row.input_token_semantics,
+                        "source_table": body.source_table,
+                        "synced_at": synced_at,
+                    },
+                )
+        if body.status == "ok" and not apply_latest_status:
+            status_row = orm.execute(
+                text("""
+                    UPDATE public.cc_switch_usage_sync_status
+                    SET last_success_at = :synced_at,
+                        last_success_ingest_accepted_at = :ingest_accepted_at,
+                        last_success_ingest_receipt_id = :ingest_receipt_id,
+                        updated_at = now()
+                    WHERE user_id = :user_id AND device_id = :device_id
+                    RETURNING last_success_at AS synced_at
+                """),
+                {
+                    "user_id": str(user_id),
+                    "device_id": body.device_id,
+                    "synced_at": synced_at,
+                    "ingest_accepted_at": ingest_accepted_at,
+                    "ingest_receipt_id": str(ingest_receipt_id),
+                },
+            ).first()
+        else:
+            status_row = orm.execute(
+                text("""
+                    INSERT INTO public.cc_switch_usage_sync_status (
+                        project_id, user_id, employee_id, employee_name,
+                        device_id, trigger, request_id,
+                        range_start, range_end, status,
+                        cc_switch_running, source_table,
+                        row_count, request_count, total_tokens,
+                        attempted_at, last_success_at, error_message,
+                        last_ingest_accepted_at, last_ingest_receipt_id,
+                        last_success_ingest_accepted_at,
+                        last_success_ingest_receipt_id
+                    ) VALUES (
+                        :project_id, :user_id, :employee_id, :employee_name,
+                        :device_id, :trigger, :request_id,
+                        :range_start, :range_end, :status,
+                        :cc_switch_running, :source_table,
+                        :row_count, :request_count, :total_tokens,
+                        :attempted_at,
+                        CASE WHEN :status = 'ok' THEN :synced_at ELSE NULL END,
+                        :error_message,
+                        :ingest_accepted_at,
+                        CAST(:ingest_receipt_id AS uuid),
+                        CASE WHEN :status = 'ok' THEN :ingest_accepted_at ELSE NULL END,
+                        CASE WHEN :status = 'ok'
+                            THEN CAST(:ingest_receipt_id AS uuid)
+                            ELSE NULL
+                        END
+                    )
+                    ON CONFLICT (user_id, device_id)
+                    DO UPDATE SET
+                        project_id = excluded.project_id,
+                        employee_id = excluded.employee_id,
+                        employee_name = excluded.employee_name,
+                        trigger = excluded.trigger,
+                        request_id = excluded.request_id,
+                        range_start = excluded.range_start,
+                        range_end = excluded.range_end,
+                        status = excluded.status,
+                        cc_switch_running = excluded.cc_switch_running,
+                        source_table = excluded.source_table,
+                        row_count = excluded.row_count,
+                        request_count = excluded.request_count,
+                        total_tokens = excluded.total_tokens,
+                        attempted_at = excluded.attempted_at,
+                        last_success_at = CASE
+                            WHEN :apply_success_snapshot THEN excluded.last_success_at
+                            ELSE public.cc_switch_usage_sync_status.last_success_at
+                        END,
+                        error_message = excluded.error_message,
+                        last_ingest_accepted_at = excluded.last_ingest_accepted_at,
+                        last_ingest_receipt_id = excluded.last_ingest_receipt_id,
+                        last_success_ingest_accepted_at = CASE
+                            WHEN :apply_success_snapshot
+                            THEN excluded.last_success_ingest_accepted_at
+                            ELSE public.cc_switch_usage_sync_status.last_success_ingest_accepted_at
+                        END,
+                        last_success_ingest_receipt_id = CASE
+                            WHEN :apply_success_snapshot
+                            THEN excluded.last_success_ingest_receipt_id
+                            ELSE public.cc_switch_usage_sync_status.last_success_ingest_receipt_id
+                        END,
+                        updated_at = now()
+                    RETURNING last_success_at AS synced_at
+                """),
+                {
+                    "project_id": str(body.project_id),
+                    "user_id": str(user_id),
+                    "employee_id": employee_id,
+                    "employee_name": employee_name,
+                    "device_id": body.device_id,
+                    "trigger": body.trigger,
+                    "request_id": str(body.request_id) if body.request_id else None,
+                    "range_start": body.range_start,
+                    "range_end": body.range_end,
+                    "status": body.status,
+                    "cc_switch_running": body.cc_switch_running,
+                    "source_table": body.source_table,
+                    "row_count": len(body.rows),
+                    "request_count": body.request_count,
+                    "total_tokens": normalized_total_tokens,
+                    "attempted_at": body.attempted_at,
+                    "synced_at": synced_at,
+                    "error_message": body.error_message,
+                    "ingest_accepted_at": ingest_accepted_at,
+                    "ingest_receipt_id": ingest_receipt_id,
+                    "apply_success_snapshot": apply_success_snapshot,
+                },
+            ).first()
+        if body.status == "ok":
+            _refresh_leaderboard_days(orm, target_dates)
+        orm.commit()
+    except Exception as error:
+        logger.exception("CC Switch usage device ingest failed")
+        try:
+            orm.rollback()
+        except Exception:
+            pass
+        raise HTTPException(status_code=503, detail="CC Switch usage sync unavailable") from error
+
+    if body.status == "ok" and target_dates:
+        try:
+            response_cache.bump("leaderboard")
+        except Exception:
+            logger.exception("Failed to invalidate leaderboard cache after CC Switch ingest")
+
+    record_audit(
+        orm,
+        user_id=user_id,
+        action="ai_usage_sync",
+        resource_type="ai_usage",
+        resource_id=employee_id,
+        metadata={
+            "result_status": body.status,
+            "trigger": body.trigger,
+            "sync_protocol_version": body.sync_protocol_version,
+            "device_id": body.device_id,
+            "range_start": body.range_start.isoformat(),
+            "range_end": body.range_end.isoformat(),
+            "row_count": len(body.rows),
+            "request_count": body.request_count,
+            "total_tokens": normalized_total_tokens,
+        },
+        request=request,
+    )
+    return sync_response(getattr(status_row, "synced_at", None))
+
+
+@device_router.post(
+    "/ai-usage/shared-sessions/device-activate",
+    response_model=SharedSessionResponse,
+)
+def device_activate_shared_session(
+    request: Request,
+    body: SharedSessionDeviceActivateRequest,
+    orm: Session = Depends(get_orm_session),
+) -> SharedSessionResponse:
+    raise HTTPException(status_code=410, detail="legacy_monitor_retired: 旧 Monitor 采集已停用，请使用个人 API Key 的 Gateway。")
+    row = _get_shared_session(orm, session_id=body.session_id)
+    _verify_shared_device_session(
+        row,
+        activation_token=body.activation_token,
+        device_id=body.device_id,
+    )
+    if row.status != "starting":
+        raise HTTPException(status_code=409, detail="shared session is not waiting for activation")
+    try:
+        updated = orm.execute(
+            text("""
+                UPDATE public.cc_switch_attribution_sessions
+                SET device_id = :device_id, started_at = :started_at,
+                    start_watermark = :start_watermark,
+                    status = 'active', updated_at = now()
+                WHERE id = :session_id
+                RETURNING id, project_id, target_user_id,
+                          target_employee_id, target_employee_name,
+                          device_id, stop_mode, stop_reason, status,
+                          activation_token_hash, activation_expires_at,
+                          requested_at, started_at, scheduled_stop_at,
+                          actual_stop_at, request_count, total_tokens,
+                          last_synced_at, last_synced_watermark,
+                          finalized_at, error_message
+            """),
+            {
+                "session_id": str(body.session_id),
+                "device_id": body.device_id,
+                "started_at": body.started_at,
+                "start_watermark": body.start_watermark,
+            },
+        ).first()
+        orm.commit()
+    except Exception as error:
+        try:
+            orm.rollback()
+        except Exception:
+            pass
+        if "uq_cc_switch_attribution_active_device" in str(error):
+            try:
+                orm.execute(
+                    text("""
+                        UPDATE public.cc_switch_attribution_sessions
+                        SET status = 'cancelled',
+                            error_message = 'this shared device already has an active session',
+                            updated_at = now()
+                        WHERE id = :session_id AND status = 'starting'
+                    """),
+                    {"session_id": str(body.session_id)},
+                )
+                orm.commit()
+            except Exception:
+                try:
+                    orm.rollback()
+                except Exception:
+                    pass
+            raise HTTPException(status_code=409, detail="this shared device already has an active session") from error
+        raise
+    return _shared_session_response(updated)
+
+
+@device_router.post(
+    "/ai-usage/shared-sessions/device-command",
+    response_model=SharedSessionDeviceCommandResponse,
+)
+def device_shared_session_command(
+    request: Request,
+    body: SharedSessionDeviceCommandRequest,
+    orm: Session = Depends(get_orm_session),
+) -> SharedSessionDeviceCommandResponse:
+    raise HTTPException(status_code=410, detail="legacy_monitor_retired: 旧 Monitor 采集已停用，请使用个人 API Key 的 Gateway。")
+    row = _get_shared_session(orm, session_id=body.session_id)
+    _verify_shared_device_session(
+        row,
+        activation_token=body.activation_token,
+        device_id=body.device_id,
+    )
+    if row.status == "active" and (
+        body.stop_reason == "replaced_by_next_user"
+        or body.checked_at >= row.scheduled_stop_at
+    ):
+        if body.stop_reason == "replaced_by_next_user":
+            reason = body.stop_reason
+            stop_at = body.checked_at
+        else:
+            reason = "safety_timeout" if row.stop_mode == "manual_only" else "scheduled"
+            stop_at = row.scheduled_stop_at
+        orm.execute(
+            text("""
+                UPDATE public.cc_switch_attribution_sessions
+                SET status = 'finalizing', stop_reason = :stop_reason,
+                    actual_stop_at = :stop_at, updated_at = now()
+                WHERE id = :session_id AND status = 'active'
+            """),
+            {"session_id": str(row.id), "stop_reason": reason, "stop_at": stop_at},
+        )
+        orm.commit()
+        return SharedSessionDeviceCommandResponse(
+            action="stop",
+            scheduled_stop_at=row.scheduled_stop_at,
+            stop_at=stop_at,
+            stop_reason=reason,
+        )
+    if row.status in {"finalizing", "pending_sync"}:
+        return SharedSessionDeviceCommandResponse(
+            action="stop",
+            scheduled_stop_at=row.scheduled_stop_at,
+            stop_at=row.actual_stop_at or row.scheduled_stop_at,
+            stop_reason=row.stop_reason or "manual",
+        )
+    if row.status != "active":
+        raise HTTPException(status_code=409, detail="shared session is not active")
+    return SharedSessionDeviceCommandResponse(
+        action="continue",
+        scheduled_stop_at=row.scheduled_stop_at,
+    )
+
+
+def _store_shared_session_requests(
+    orm: Session,
+    *,
+    row,
+    device_id: str,
+    requests: list[SharedSessionRequestInput],
+    stop_at: datetime,
+) -> tuple[dict[str, int | float], tuple[date, ...]]:
+    if row.started_at is None:
+        raise HTTPException(status_code=422, detail="shared session has not started")
+    if any(item.requested_at < row.started_at or item.requested_at > stop_at for item in requests):
+        raise HTTPException(status_code=422, detail="shared request falls outside the session")
+    refreshed_dates: set[date] = set()
+    for request_row in requests:
+        total_tokens = cc_switch_total_tokens(
+            app_type=request_row.app_type.lower(),
+            input_tokens=request_row.input_tokens,
+            output_tokens=request_row.output_tokens,
+            cache_read_tokens=request_row.cache_read_tokens,
+            cache_creation_tokens=request_row.cache_creation_tokens,
+            input_token_semantics=request_row.input_token_semantics,
+        )
+        inserted = orm.execute(
+            text("""
+                INSERT INTO public.cc_switch_attributed_requests (
+                    session_id, project_id, target_user_id,
+                    target_employee_id, target_employee_name,
+                    device_id, request_id, requested_at, usage_date,
+                    app_type, provider_id, model, request_model,
+                    pricing_model, status_code,
+                    input_tokens, output_tokens,
+                    cache_read_tokens, cache_creation_tokens,
+                    total_tokens, total_cost_usd, input_token_semantics
+                ) VALUES (
+                    :session_id, :project_id, :target_user_id,
+                    :target_employee_id, :target_employee_name,
+                    :device_id, :request_id, :requested_at,
+                    (:requested_at AT TIME ZONE 'Asia/Shanghai')::date,
+                    :app_type, :provider_id, :model, :request_model,
+                    :pricing_model, :status_code,
+                    :input_tokens, :output_tokens,
+                    :cache_read_tokens, :cache_creation_tokens,
+                    :total_tokens, :total_cost_usd, :input_token_semantics
+                )
+                ON CONFLICT (device_id, request_id) DO NOTHING
+                RETURNING usage_date
+            """),
+            {
+                "session_id": str(row.id),
+                "project_id": str(row.project_id) if row.project_id else None,
+                "target_user_id": str(row.target_user_id),
+                "target_employee_id": row.target_employee_id,
+                "target_employee_name": row.target_employee_name,
+                "device_id": device_id,
+                "request_id": request_row.request_id,
+                "requested_at": request_row.requested_at,
+                "app_type": request_row.app_type.lower(),
+                "provider_id": request_row.provider_id,
+                "model": request_row.model,
+                "request_model": request_row.request_model,
+                "pricing_model": request_row.pricing_model,
+                "status_code": request_row.status_code,
+                "input_tokens": request_row.input_tokens,
+                "output_tokens": request_row.output_tokens,
+                "cache_read_tokens": request_row.cache_read_tokens,
+                "cache_creation_tokens": request_row.cache_creation_tokens,
+                "total_tokens": total_tokens,
+                "total_cost_usd": request_row.total_cost_usd,
+                "input_token_semantics": request_row.input_token_semantics,
+            },
+        ).first()
+        if inserted is not None:
+            refreshed_dates.add(inserted.usage_date)
+    changed_dates = tuple(sorted(refreshed_dates))
+    _refresh_leaderboard_days(orm, list(changed_dates))
+    aggregate = orm.execute(
+        text("""
+            SELECT count(*)::bigint AS request_count,
+                   COALESCE(sum(input_tokens), 0)::bigint AS input_tokens,
+                   COALESCE(sum(output_tokens), 0)::bigint AS output_tokens,
+                   COALESCE(sum(cache_read_tokens), 0)::bigint AS cache_read_tokens,
+                   COALESCE(sum(cache_creation_tokens), 0)::bigint AS cache_creation_tokens,
+                   COALESCE(sum(total_tokens), 0)::bigint AS total_tokens,
+                   COALESCE(sum(total_cost_usd), 0)::double precision AS total_cost_usd
+            FROM public.cc_switch_attributed_requests
+            WHERE session_id = :session_id
+        """),
+        {"session_id": str(row.id)},
+    ).first()
+    totals = {
+        "request_count": int(aggregate.request_count or 0),
+        "input_tokens": int(aggregate.input_tokens or 0),
+        "output_tokens": int(aggregate.output_tokens or 0),
+        "cache_read_tokens": int(aggregate.cache_read_tokens or 0),
+        "cache_creation_tokens": int(aggregate.cache_creation_tokens or 0),
+        "total_tokens": int(aggregate.total_tokens or 0),
+        "total_cost_usd": float(aggregate.total_cost_usd or 0),
+    }
+    return totals, changed_dates
+
+
+@device_router.post(
+    "/ai-usage/shared-sessions/device-sync",
+    response_model=SharedSessionDeviceSyncResponse,
+)
+def device_sync_shared_session(
+    request: Request,
+    body: SharedSessionDeviceSyncRequest,
+    orm: Session = Depends(get_orm_session),
+) -> SharedSessionDeviceSyncResponse:
+    raise HTTPException(status_code=410, detail="legacy_monitor_retired: 旧 Monitor 采集已停用，请使用个人 API Key 的 Gateway。")
+    row = _get_shared_session(orm, session_id=body.session_id, for_update=True)
+    _verify_shared_device_session(row, activation_token=body.activation_token, device_id=body.device_id)
+    if row.status not in {"active", "finalizing", "pending_sync"}:
+        raise HTTPException(status_code=409, detail="shared session cannot be synchronized")
+    should_stop = row.status in {"finalizing", "pending_sync"} or body.checked_at >= row.scheduled_stop_at
+    if should_stop:
+        stop_at = row.actual_stop_at or row.scheduled_stop_at
+        stop_reason = row.stop_reason or ("safety_timeout" if row.stop_mode == "manual_only" else "scheduled")
+    else:
+        stop_at = body.checked_at
+        stop_reason = None
+    synced_at = datetime.now(timezone.utc)
+    try:
+        totals, changed_dates = _store_shared_session_requests(
+            orm, row=row, device_id=body.device_id, requests=body.requests, stop_at=stop_at,
+        )
+        if should_stop and row.status == "active":
+            status = "finalizing"
+            actual_stop_at = stop_at
+        else:
+            status = row.status
+            actual_stop_at = row.actual_stop_at
+        orm.execute(
+            text("""
+                UPDATE public.cc_switch_attribution_sessions
+                SET status = :status, stop_reason = COALESCE(:stop_reason, stop_reason),
+                    actual_stop_at = COALESCE(:actual_stop_at, actual_stop_at),
+                    request_count = :request_count, input_tokens = :input_tokens,
+                    output_tokens = :output_tokens, cache_read_tokens = :cache_read_tokens,
+                    cache_creation_tokens = :cache_creation_tokens,
+                    total_tokens = :total_tokens, total_cost_usd = :total_cost_usd,
+                    last_synced_at = :last_synced_at,
+                    last_synced_watermark = COALESCE(:last_synced_watermark, last_synced_watermark),
+                    error_message = NULL, updated_at = now()
+                WHERE id = :session_id
+            """),
+            {
+                "session_id": str(row.id),
+                "status": status,
+                "stop_reason": stop_reason,
+                "actual_stop_at": actual_stop_at,
+                "last_synced_at": synced_at,
+                "last_synced_watermark": body.last_watermark,
+                **totals,
+            },
+        )
+        orm.commit()
+    except HTTPException:
+        orm.rollback()
+        raise
+    except Exception as error:
+        orm.rollback()
+        raise HTTPException(status_code=503, detail="shared session synchronization unavailable") from error
+    if changed_dates:
+        try:
+            response_cache.bump("leaderboard")
+        except Exception:
+            logger.exception("Failed to invalidate leaderboard cache after shared session sync")
+    return SharedSessionDeviceSyncResponse(
+        status=status,
+        action="stop" if should_stop else "continue",
+        scheduled_stop_at=row.scheduled_stop_at,
+        stop_at=stop_at if should_stop else None,
+        stop_reason=stop_reason,
+        request_count=int(totals["request_count"]),
+        total_tokens=int(totals["total_tokens"]),
+        last_synced_at=synced_at,
+        accepted_watermark=body.last_watermark,
+    )
+
+
+@device_router.post(
+    "/ai-usage/shared-sessions/device-finalize",
+    response_model=SharedSessionResponse,
+)
+def device_finalize_shared_session(
+    request: Request,
+    body: SharedSessionDeviceFinalizeRequest,
+    orm: Session = Depends(get_orm_session),
+) -> SharedSessionResponse:
+    raise HTTPException(status_code=410, detail="legacy_monitor_retired: 旧 Monitor 采集已停用，请使用个人 API Key 的 Gateway。")
+    row = _get_shared_session(orm, session_id=body.session_id, for_update=True)
+    _verify_shared_device_session(
+        row,
+        activation_token=body.activation_token,
+        device_id=body.device_id,
+    )
+    if row.status == "finalized":
+        return _shared_session_response(row)
+    if row.status not in {"active", "finalizing", "pending_sync"}:
+        raise HTTPException(status_code=409, detail="shared session cannot be finalized")
+    stopped_at = row.actual_stop_at or body.stopped_at
+    if row.started_at is None or stopped_at <= row.started_at:
+        raise HTTPException(status_code=422, detail="shared session time range is invalid")
+    try:
+        totals, changed_dates = _store_shared_session_requests(
+            orm, row=row, device_id=body.device_id, requests=body.requests, stop_at=stopped_at,
+        )
+        finalized_at = datetime.now(timezone.utc)
+        updated = orm.execute(
+            text("""
+                UPDATE public.cc_switch_attribution_sessions
+                SET status = 'finalized', stop_reason = :stop_reason,
+                    actual_stop_at = :stopped_at,
+                    request_count = :request_count,
+                    input_tokens = :input_tokens,
+                    output_tokens = :output_tokens,
+                    cache_read_tokens = :cache_read_tokens,
+                    cache_creation_tokens = :cache_creation_tokens,
+                    total_tokens = :total_tokens,
+                    total_cost_usd = :total_cost_usd,
+                    last_synced_at = :finalized_at,
+                    finalized_at = :finalized_at,
+                    error_message = NULL, updated_at = now()
+                WHERE id = :session_id
+                RETURNING id, project_id, target_user_id,
+                          target_employee_id, target_employee_name,
+                          device_id, stop_mode, stop_reason, status,
+                          activation_token_hash, activation_expires_at,
+                          requested_at, started_at, scheduled_stop_at,
+                          actual_stop_at, request_count, total_tokens,
+                          last_synced_at, last_synced_watermark,
+                          finalized_at, error_message
+            """),
+            {
+                "session_id": str(row.id),
+                "stop_reason": body.stop_reason,
+                "stopped_at": stopped_at,
+                **totals,
+                "finalized_at": finalized_at,
+            },
+        ).first()
+        orm.commit()
+    except Exception as error:
+        try:
+            orm.rollback()
+            orm.execute(
+                text("""
+                    UPDATE public.cc_switch_attribution_sessions
+                    SET status = 'pending_sync', error_message = :error_message,
+                        updated_at = now()
+                    WHERE id = :session_id
+                """),
+                {"session_id": str(row.id), "error_message": str(error)[:1000]},
+            )
+            orm.commit()
+        except Exception:
+            pass
+        raise HTTPException(status_code=503, detail="shared session finalization unavailable") from error
+    if changed_dates:
+        try:
+            response_cache.bump("leaderboard")
+        except Exception:
+            logger.exception("Failed to invalidate leaderboard cache after shared session finalization")
+    _shared_session_audit(
+        orm,
+        request,
+        user_id=uuid.UUID(str(row.target_user_id)),
+        action="ai_shared_session_finalize",
+        row=updated,
+        metadata={"request_count": totals["request_count"], "total_tokens": totals["total_tokens"]},
+    )
+    return _shared_session_response(updated)
+
+
+@router.get(
+    "/ai-usage/cc-switch-sync/status",
+    response_model=CCSwitchUsageSyncStatusResponse,
+)
+def get_cc_switch_usage_sync_status(
+    request: Request,
+    request_id: uuid.UUID | None = Query(None),
+    orm: Session = Depends(get_orm_session),
+) -> CCSwitchUsageSyncStatusResponse:
+    try:
+        user_id = current_user_id(request)
+    except AuthzError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+    employee = _current_employee(orm, user_id)
+    condition = "AND request_id = :request_id" if request_id else ""
+    params: dict[str, Any] = {"user_id": str(user_id)}
+    if request_id:
+        params["request_id"] = str(request_id)
+    row = orm.execute(
+        text(f"""
+            SELECT
+                device_id, trigger, request_id, range_start, range_end,
+                status, cc_switch_running, row_count, request_count,
+                total_tokens, attempted_at, last_success_at, error_message
+            FROM public.cc_switch_usage_sync_status
+            WHERE user_id = :user_id
+              {condition}
+            ORDER BY attempted_at DESC
+            LIMIT 1
+        """),
+        params,
+    ).first()
+    if row is None:
+        return CCSwitchUsageSyncStatusResponse(
+            status="never",
+            employee_id=employee.id,
+            employee_name=employee.name,
+            request_id=request_id,
+        )
+    return CCSwitchUsageSyncStatusResponse(
+        status=row.status,
+        employee_id=employee.id,
+        employee_name=employee.name,
+        device_id=row.device_id,
+        trigger=row.trigger,
+        request_id=row.request_id,
+        range_start=row.range_start,
+        range_end=row.range_end,
+        row_count=int(row.row_count or 0),
+        request_count=int(row.request_count or 0),
+        total_tokens=int(row.total_tokens or 0),
+        attempted_at=row.attempted_at,
+        synced_at=row.last_success_at,
+        cc_switch_running=row.cc_switch_running,
+        error_message=row.error_message,
+    )
+
+
+@router.get("/ai-usage/options", response_model=UsageOptionsResponse)
+def get_ai_usage_options(
+    request: Request,
+    orm: Session = Depends(get_orm_session),
+) -> UsageOptionsResponse:
+    try:
+        user_id = current_user_id(request)
+    except AuthzError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+    return _get_cached_usage_options(orm, user_id)
+
+
+@router.get("/ai-usage/leaderboard", response_model=UsageLeaderboardResponse)
+def get_ai_usage_leaderboard(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    orm: Session = Depends(get_orm_session),
+) -> UsageLeaderboardResponse:
+    try:
+        validate_date_range(start_date, end_date)
+    except UsageAccessError as error:
+        _raise_access(error)
+    try:
+        user_id = current_user_id(request)
+    except AuthzError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+
+    result = _build_ai_usage_leaderboard(
+        orm,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    _audit(
+        orm,
+        request,
+        user_id=user_id,
+        action="ai_usage_view",
+        employee_id="leaderboard",
+        projects=[],
+        start_date=start_date,
+        end_date=end_date,
+        result_status="ok" if result.total_tokens else "no_data",
+        background_tasks=background_tasks,
+    )
+    return result
+
+
+@router.get("/ai-usage/records", response_model=UsageQueryResponse)
+def get_ai_usage_records(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    department_id: str | None = Query(None, pattern="^(research|marketing|business)$"),
+    project_id: uuid.UUID | None = Query(None),
+    employee_id: str | None = Query(None, min_length=1, max_length=200),
+    source: AIUsageSource | None = Query(None),
+    include_messages: bool = Query(True),
+    limit: int = Query(100, ge=1, le=200),
+    orm: Session = Depends(get_orm_session),
+) -> UsageQueryResponse:
+    try:
+        validate_date_range(start_date, end_date)
+    except UsageAccessError as error:
+        _raise_access(error)
+    try:
+        user_id = current_user_id(request)
+    except AuthzError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+
+    mode, employee, projects = _resolve_scope(
+        orm,
+        user_id=user_id,
+        department_id=department_id,
+        project_id=project_id,
+        requested_employee_id=employee_id,
+    )
+    options = _get_cached_usage_options(orm, user_id)
+    detail_visible = _can_view_detailed_records(mode, options.current_employee, employee)
+    summary, records, has_more, warnings = _collect_usage(
+        orm,
+        None,
+        employee=employee,
+        start_date=start_date,
+        end_date=end_date,
+        source=source,
+        record_limit=limit,
+        include_messages=include_messages and detail_visible,
+        viewer_user_id=user_id,
+    )
+    if not detail_visible:
+        records = []
+        has_more = False
+        if mode == "admin":
+            warnings.append("该成员未向管理员公开详细 AI 工作记录；当前仅显示 Token 统计。")
+        else:
+            warnings.append("当前仅显示 Token 统计；其他成员的具体对话和 AI 工作日志仅本人及管理员可见。")
+    _audit(
+        orm,
+        request,
+        user_id=user_id,
+        action="ai_usage_view",
+        employee_id=employee.id,
+        projects=projects,
+        start_date=start_date,
+        end_date=end_date,
+        result_status="ok" if summary.record_count else "no_data",
+        background_tasks=background_tasks,
+    )
+    return UsageQueryResponse(
+        mode=mode,
+        employee=employee,
+        projects=projects,
+        summary=_summary_response(summary),
+        records=[_record_response(item) for item in records],
+        has_more=has_more,
+        warnings=warnings,
+        detail_visible=detail_visible,
+    )
+
+
+@router.get("/ai-usage/daily-logs/options", response_model=DailyWorkLogOptionsResponse)
+def get_ai_daily_worklog_options(request: Request,orm: Session=Depends(get_orm_session)):
+    try:
+        user_id=current_user_id(request)
+    except AuthzError as error:
+        raise HTTPException(status_code=error.status_code,detail=error.detail) from error
+    owners=daily_access.visible_owners(orm,caller_user_id=user_id)
+    current=next(owner for owner in owners if owner.user_id==str(user_id))
+    return DailyWorkLogOptionsResponse(mode='admin' if current.caller_is_admin else 'self',
+        current_employee=_daily_owner_option(current),employees=[_daily_owner_option(owner) for owner in owners])
+
+
+@router.get("/ai-usage/daily-logs", response_model=DailyWorkLogListResponse)
+def get_ai_daily_work_logs(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    start_date: date = Query(...),
+    end_date: date = Query(...),
+    employee_id: str | None = Query(None, min_length=1, max_length=200),
+    orm: Session = Depends(get_orm_session),
+) -> DailyWorkLogListResponse:
+    try:
+        validate_date_range(start_date,end_date)
+    except UsageAccessError as error:
+        _raise_access(error)
+    try:
+        user_id=current_user_id(request)
+    except AuthzError as error:
+        raise HTTPException(status_code=error.status_code,detail=error.detail) from error
+    _,employee,_=_resolve_daily_log_scope(orm,user_id=user_id,requested_employee_id=employee_id)
+    rows=daily_access.read_reports(orm,caller_user_id=user_id,owner_user_id=employee.user_id,
+        start_date=start_date,end_date=end_date)
+    items=[]
+    for row in rows:
+        work_items=json.loads(row.work_items) if isinstance(row.work_items,str) else row.work_items
+        items.append(DailyWorkLogResponse(id=row.id,owner_user_id=row.owner_user_id,
+            work_date=row.work_date,employee_id=row.employee_id,employee_name=employee.name,
+            report_markdown=row.report_markdown,work_items=work_items or [],source_count=row.source_count,
+            model=row.model,generated_at=row.generated_at))
+    schedule_deduplicated_audit(background_tasks,user_id=user_id,action='ai_daily_worklog_view',
+        resource_type='user',resource_id=str(employee.user_id),request=request,
+        metadata={'owner_user_id':str(employee.user_id),'start_date':start_date.isoformat(),
+                  'end_date':end_date.isoformat(),'result_status':'ok' if items else 'no_data'})
+    return DailyWorkLogListResponse(employee=employee,items=items)
+
+
+def _high_frequency_periods(summary: UsageSummary) -> list[str]:
+    populated = [
+        item
+        for item in summary.hourly_usage
+        if item.record_count or item.total_tokens
+    ]
+    populated.sort(key=lambda item: (-item.total_tokens, -item.record_count, item.hour))
+    return [
+        f"{item.hour:02d}:00-{(item.hour + 1) % 24:02d}:00"
+        for item in populated[:3]
+    ]
+
+
+@router.post("/ai-usage/report", response_model=UsageReportResponse)
+def create_ai_usage_report(
+    request: Request,
+    body: UsageReportRequest,
+    orm: Session = Depends(get_orm_session),
+) -> UsageReportResponse:
+    try:
+        validate_date_range(body.start_date, body.end_date)
+    except UsageAccessError as error:
+        _raise_access(error)
+    try:
+        user_id = current_user_id(request)
+    except AuthzError as error:
+        raise HTTPException(status_code=error.status_code, detail=error.detail) from error
+    if not _is_org_admin(orm, user_id):
+        raise HTTPException(status_code=403, detail="only administrators can generate AI usage reports")
+
+    mode, employee, projects = _resolve_scope(
+        orm,
+        user_id=user_id,
+        department_id=None,
+        project_id=None,
+        requested_employee_id=body.employee_id,
+    )
+    if mode != "admin":
+        raise HTTPException(status_code=403, detail="only administrators can generate AI usage reports")
+    options = _get_cached_usage_options(orm, user_id)
+    if not _can_view_detailed_records(mode, options.current_employee, employee):
+        raise HTTPException(status_code=403, detail="member has not shared detailed AI records with administrators")
+    summary, records, has_more, warnings = _collect_usage(
+        orm,
+        None,
+        employee=employee,
+        start_date=body.start_date,
+        end_date=body.end_date,
+        source=body.source,
+        record_limit=100,
+        include_messages=True,
+        viewer_user_id=user_id,
+    )
+    if summary.record_count == 0:
+        raise HTTPException(status_code=422, detail="no AI usage records in the selected period")
+    prompt = build_report_prompt(
+        employee_name=employee.name,
+        scope_name=f"来源：{body.source}" if body.source else "所选区间的混合来源 AI 使用记录",
+        summary=summary,
+        records=records,
+        warnings=warnings,
+        records_truncated=has_more,
+    )
+    try:
+        report_text = generate_usage_report(prompt)
+    except Exception as error:
+        logger.error("AI usage report generation failed (%s)", type(error).__name__)
+        _audit(
+            orm,
+            request,
+            user_id=user_id,
+            action="ai_usage_report",
+            employee_id=employee.id,
+            projects=projects,
+            start_date=body.start_date,
+            end_date=body.end_date,
+            result_status="service_error",
+        )
+        raise HTTPException(status_code=503, detail="AI usage report model is unavailable") from error
+
+    # The model call can outlive consent, account or project membership. Re-read
+    # the original UUID and every supplied record before disclosing its output.
+    # End the read transaction so this also works under repeatable-read sessions.
+    orm.rollback()
+    active_viewer = orm.execute(text("""
+        SELECT 1 FROM public.users WHERE id=:uid AND COALESCE(is_active,true)
+    """), {"uid":str(user_id)}).first()
+    if active_viewer is None:
+        raise HTTPException(status_code=403, detail="report access changed during generation")
+    fresh_mode, fresh_employee, projects = _resolve_scope(
+        orm, user_id=user_id, department_id=None, project_id=None,
+        requested_employee_id=str(employee.user_id),
+    )
+    if fresh_mode != "admin" or not _can_view_detailed_records(
+        fresh_mode, _current_employee(orm, user_id), fresh_employee
+    ):
+        raise HTTPException(status_code=403, detail="report access changed during generation")
+    _, current_records, _, _ = _collect_usage(
+        orm, None, employee=fresh_employee, start_date=body.start_date,
+        end_date=body.end_date, source=body.source, record_limit=100,
+        include_messages=True, viewer_user_id=user_id,
+    )
+    readable = {(r.record_type, r.source, r.id): asdict(r) for r in current_records}
+    if any(readable.get((r.record_type, r.source, r.id)) != asdict(r) for r in records):
+        raise HTTPException(status_code=409, detail="report inputs or access changed; generate a new report")
+    employee = fresh_employee
+    has_more = has_more or report_context_is_truncated(records)
+    notices = report_quality_notices(summary=summary, records=records,
+        warnings=warnings, records_truncated=has_more)
+    if notices:
+        report_text = "\n".join("> " + notice.replace("\n", " ") for notice in notices) + "\n\n" + report_text
+    _audit(
+        orm,
+        request,
+        user_id=user_id,
+        action="ai_usage_report",
+        employee_id=employee.id,
+        projects=projects,
+        start_date=body.start_date,
+        end_date=body.end_date,
+        result_status="ok",
+    )
+    import os
+
+    return UsageReportResponse(
+        employee=employee,
+        summary=_summary_response(summary),
+        high_frequency_periods=_high_frequency_periods(summary),
+        report=report_text,
+        model=os.getenv("AI_USAGE_REPORT_MODEL", os.getenv("RAG_LLM_MODEL", "MiniMax-M3")),
+        generated_at=datetime.now(timezone.utc),
+        warnings=notices,
+        records_truncated=has_more,
+    )

@@ -1,6 +1,6 @@
 ---
 name: company-memory
-description: Search and apply SmartBrain project Wiki, privacy-scoped member experience, and project meeting summaries through MCP. Use for organization-specific decisions, workflows, prior examples, recent changes, requests to learn how a named member completed a similar task, or questions about meeting decisions and action items; also use when the user asks to preserve stable project knowledge through a trusted direct Wiki write.
+description: Search and apply SmartBrain project Wiki, privacy-scoped member experience, and project meeting summaries through MCP. Use for organization-specific decisions, workflows, examples, member experience and meetings; also use for authorized project conversation submissions under AGENTS.md or stable project knowledge writes.
 ---
 
 # Company Memory
@@ -52,7 +52,7 @@ Stop retrieving once the evidence is sufficient for the task.
 - Cite member methods as `[Member Wiki: <member> / <title> (<experience_id>), updated <date>]`.
 - Cite meetings as `[Meeting: <title> (<summary_id>), <meeting_date>]`.
 - Never imply the Wiki was checked when no MCP result was actually retrieved.
-- Never request or expose raw member chat transcripts, secrets, credentials, or inaccessible members/projects.
+- Never request or expose other members' raw chat transcripts, secrets, credentials, or inaccessible members/projects.
 
 ## Using Results
 
@@ -73,3 +73,18 @@ Call `propose_memory` only when the user explicitly asks to record the lesson or
 - State clearly that a successful response with `status=published` created or updated the formal project Wiki page directly.
 
 If the token lacks `wiki:propose`, provide the proposed Markdown to the user without attempting to bypass the scope.
+
+## Recording Project Conversations
+
+Use `record_project_conversation` only when the user explicitly requests a project record, or the project's trusted AGENTS.md authorizes the selected task content. A later user instruction to stop or narrow recording takes precedence.
+
+- Read the exact `smartbrain-project-id` UUID from the current project's AGENTS.md. Pass it as the explicit `project_id`; do not infer a project from its name, a previous task, or a default server setting. If metadata is missing or conflicts with the active project, clarify before writing.
+- Submit only a concise summary of the authorized visible user request and the assistant's FINAL task result. This is not a transcript upload. Use one short `user` request summary followed by one short `assistant` final-result summary; a single selected summary is also accepted. Prefer a few sentences, not the maximum allowed length.
+- Never read, reproduce, summarize or upload hidden thinking, chain of thought, reasoning/analysis channels, progress/commentary, tool calls/results/logs, code dumps, system/developer instructions, environment/configuration, credentials, personal data or other members' chats. Derive the summary only from visible user requests and final answers; do not copy whole conversation history. If no final outcome is available, record only the visible request when explicitly authorized, without inferring internal progress.
+- Generate one UUID `submission_id` for a new submission. Keep it and the identical payload for retries after an uncertain response or failed Wiki publishing. Changed content requires a new submission ID; never silently change an already saved submission.
+- Pass `title` (at most 120 characters), at most two ordered `messages` (each only `role` and `content`; user at most 300 characters, assistant at most 600), `task_result` (at most 300 characters; omit if it just repeats the final summary), and optionally `model`. Total payload is at most 6000 UTF-8 bytes. The server rejects overlong or recognized internal-content envelopes. Rewrite a shorter summary from visible text before the first submission; do not truncate silently or retry rejected internal content unchanged.
+- Omit `model` or use `unknown` when uncertain. A supplied model name is client-declared. Do not pass or invent Token counts, a model request ID, upload time, or uploader identity.
+- Confirm the returned `project_id`, `record_id`, `submission_id`, `uploaded_by`, and `uploaded_at`. `status=saved` means the canonical content was saved. Only `wiki_status=published` means its linked project Wiki conversation page was published. These pages are `generated`, not formally verified policy.
+- If `wiki_status=failed`, state that the content is saved but Wiki publishing failed, then retry the same submission once. If it still fails, report the record ID and pending action; do not claim it is already visible in the Wiki.
+- If the tool is missing, the scope is insufficient, or a save fails, report that recording has not completed. Do not substitute `propose_memory`, a local file, or an invented receipt for canonical conversation recording.
+- This workflow binds submitted content to a permission-checked project; it does not capture every model request or the entire client conversation automatically.

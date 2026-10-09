@@ -323,7 +323,7 @@ describe('AdminPage', () => {
     const main = await screen.findByRole('main');
     expect(main).toHaveClass('py-3');
     expect(screen.getByTestId('project-create-profile-workspace')).toHaveClass('gap-3');
-    expect(screen.getByRole('button', { name: '打开分类管理' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '打开分类管理' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: '创建项目' })).toBeInTheDocument();
   });
 

@@ -1,5 +1,9 @@
 # Smart Brain Agent 正式版
 
+2026-10-09 当前源码入口：[deploy/current/SOURCE.md](deploy/current/SOURCE.md)。当前已发布修复与不同后端服务的实际源码快照已保存；[本轮验收](docs/releases/repository-source-20261009.md)记录范围。
+
+要按当前项目部署，请使用 [codex/reproducible-deployment-20261009 分支](https://github.com/nogreenmountain/smart-brain-agent-official/tree/codex/reproducible-deployment-20261009) 的 `docs/deployment/AI-DEPLOY.md`。下面原 profile 介绍保留为历史；`employee` Monitor、项目 Key 绑定和适配器已取消，不是当前部署入口。
+
 这是 Smart Brain Agent 的可复用部署基线，目标是在 Ubuntu 或 Windows 电脑上，根据部署需求快速初始化局域网、公网、RAG、员工端或离线环境。
 
 ## 本仓库定位

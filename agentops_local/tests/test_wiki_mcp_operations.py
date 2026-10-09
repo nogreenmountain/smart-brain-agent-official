@@ -62,6 +62,7 @@ class WikiMcpOperationsTests(unittest.TestCase):
 
         service = module.WikiOperations(session_factory=session_factory)
         hit = SimpleNamespace(
+            project_id=project_id,
             page_id=uuid.UUID("00000000-0000-0000-0000-000000000020"),
             title="Deployment rollback",
             page_type="troubleshooting",

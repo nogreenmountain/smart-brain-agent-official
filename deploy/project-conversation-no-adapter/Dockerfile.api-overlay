@@ -1,0 +1,5 @@
+# Candidate only: project_agents baseline matched the actual main API bytes.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY --chmod=0644 agentops_local/api/routes/v4/project_agents.py /app/agentops/api/routes/v4/project_agents.py
+# No replacement of Key management, gateway, auth or worker modules.

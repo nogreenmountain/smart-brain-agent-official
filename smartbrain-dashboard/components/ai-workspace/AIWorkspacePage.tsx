@@ -100,7 +100,7 @@ export function AIWorkspacePage({ initialView = 'records' }: { initialView?: AIW
         </div>
       </header>
 
-      <section role="tabpanel" className="min-h-0 min-w-0 flex-1 overflow-hidden">
+      <section role="tabpanel" className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain">
         <Suspense
           fallback={(
             <div className="flex h-full items-center justify-center gap-3 text-sm text-[#6e7d97]">

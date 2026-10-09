@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createProjectContext,
   getProjectAgents,
-  getLocalProjectAdapterStatus,
   getProjectWikiUploadStats,
   initializeProjectAgents,
   uploadProjectAgents,
@@ -33,12 +32,8 @@ describe('project AGENTS API helpers', () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ project_id: 'p1', filename: 'AGENTS.md', content: 'x', version: 1, sha256: 'a'.repeat(64) }), { status: 200 })));
     await expect(createProjectContext('p1', 'key-1')).resolves.toMatchObject({ token: 'sbc_x' });
     await expect(getProjectWikiUploadStats('p1')).resolves.toMatchObject({ total: 2 });
+    expect(fetch).toHaveBeenLastCalledWith(expect.stringContaining('/v4/projects/p1/conversation-upload-stats'), expect.objectContaining({ cache: 'no-store' }));
     await expect(initializeProjectAgents('p1')).resolves.toMatchObject({ filename: 'AGENTS.md' });
   });
 
-  it('checks the per-project local adapter without sending browser credentials', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true, project_id: 'p1', listen_port: 8811 }), { status: 200 })));
-    await expect(getLocalProjectAdapterStatus(8811)).resolves.toMatchObject({ project_id: 'p1' });
-    expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:8811/control/status', expect.objectContaining({ mode: 'cors' }));
-  });
 });

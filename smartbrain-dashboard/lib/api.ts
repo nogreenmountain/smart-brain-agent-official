@@ -64,12 +64,6 @@ export interface ProjectContext {
   refresh_after?: string;
 }
 
-export interface LocalProjectAdapterStatus {
-  ok: boolean;
-  project_id: string;
-  listen_port: number;
-}
-
 export interface WikiUploadStatsMember {
   user_id: string;
   display_name: string;
@@ -1386,17 +1380,8 @@ export async function createProjectContext(projectId: string, keyId?: string): P
   });
 }
 
-export async function getLocalProjectAdapterStatus(port: number): Promise<LocalProjectAdapterStatus> {
-  const response = await fetch(`http://127.0.0.1:${port}/control/status`, {
-    cache: 'no-store',
-    mode: 'cors',
-  });
-  if (!response.ok) throw new ApiError(response.status, null, `本机适配器不可用 (${response.status})`);
-  return response.json() as Promise<LocalProjectAdapterStatus>;
-}
-
 export async function getProjectWikiUploadStats(projectId: string): Promise<WikiUploadStats> {
-  return call<WikiUploadStats>(`/v4/projects/${encodeURIComponent(projectId)}/wiki-upload-stats`, { cache: 'no-store' });
+  return call<WikiUploadStats>(`/v4/projects/${encodeURIComponent(projectId)}/conversation-upload-stats`, { cache: 'no-store' });
 }
 
 export async function listProjectCatalog(): Promise<Project[]> {

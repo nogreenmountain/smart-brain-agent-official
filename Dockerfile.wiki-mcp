@@ -1,12 +1,10 @@
-FROM agentops-api-local:patched-2026-08-10-wiki-direct-publish-r25
+# Preserve the actual MCP runtime and existing material/auth capabilities.
+# Recheck the active image before release; do not use the older API parent.
+ARG BASE_IMAGE=smartbrain/wiki-mcp@sha256:f082527c40bb30d645072afeafcf8c76bf61b6589cdf6ca46017d14c09f0a1b4
+FROM ${BASE_IMAGE}
 
-RUN pip install --no-cache-dir \
-    --target=/app/.venv/lib/python3.12/site-packages \
-    mcp==2.0.0
-
-COPY agentops_local/wiki_mcp/ /app/agentops/wiki_mcp/
-COPY agentops_local/member_wiki/ /app/agentops/member_wiki/
-COPY agentops_local/meeting_summaries/ /app/agentops/meeting_summaries/
+COPY agentops_local/wiki_mcp/server.py agentops_local/wiki_mcp/operations.py agentops_local/wiki_mcp/materials.py /app/agentops/wiki_mcp/
+COPY agentops_local/project_memory/conversations.py /app/agentops/project_memory/conversations.py
 
 EXPOSE 8010
 

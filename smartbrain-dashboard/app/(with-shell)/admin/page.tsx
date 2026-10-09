@@ -1173,7 +1173,7 @@ export default function AdminPage() {
                       刷新
                     </Button>
                   </div>
-                  <div className="max-h-[620px] overflow-y-auto p-4">
+                  <div className="p-4">
                     {pendingDraftRows.length === 0 ? (
                        <EmptyState title="当前没有待审批内容" hint="项目原始资料、会议记录和 GitHub 仓库地址提交后会统一出现在这里" />
                     ) : (
@@ -1211,7 +1211,7 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <div className="max-h-[72vh] overflow-y-auto rounded-lg border border-[#d7e0ec] bg-white p-5 shadow-[0_10px_24px_rgba(15,35,66,0.04)] md:p-6">
+                <div className="rounded-lg border border-[#d7e0ec] bg-white p-5 shadow-[0_10px_24px_rgba(15,35,66,0.04)] md:p-6">
                   {selectedDraft ? (
                     <div className="space-y-4">
                       <div className="sticky top-0 z-[1] flex flex-col gap-3 border-b border-[#e3e9f1] bg-white pb-3 md:flex-row md:items-center md:justify-between">

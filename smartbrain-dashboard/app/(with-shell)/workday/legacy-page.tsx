@@ -305,7 +305,7 @@ export default function WorkdayPage({ embedded = false }: { embedded?: boolean }
         }
       />}
 
-      <main className="min-h-0 flex-1 overflow-y-auto">
+      <main className={`min-h-0 flex-1 ${embedded ? 'overflow-visible' : 'overflow-y-auto'}`}>
         <form onSubmit={submitQuery} className="border-b border-[#d7e0ec] bg-white px-4 py-4 md:px-6">
           <div className="mx-auto max-w-[1320px]">
           {selectableEmployeeMode && (

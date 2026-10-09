@@ -109,3 +109,6 @@ evidence.private.*
 # Generated TypeScript build state and scratch patch
 *.tsbuildinfo
 patch.tmp
+
+# Deployed Python snapshots deliberately preserve lowercase package directories.
+!deploy/current/runtime-sources/**

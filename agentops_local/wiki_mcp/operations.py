@@ -8,33 +8,83 @@ from datetime import datetime
 from typing import Any, Callable
 
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from agentops.project_memory.conversations import save_project_conversation, validate_submission
 
-from agentops.project_wiki.query import (
-    get_decision_records as query_decision_records,
-    get_examples as query_examples,
-    get_page as query_get_page,
-    get_recent_updates as query_recent_updates,
-    get_related_nodes as query_related_nodes,
-    search_wiki as query_search_wiki,
-)
-from agentops.project_wiki.service import create_memory_proposal
-from agentops.member_wiki.access import (
-    MemberWikiAccessError,
-    load_member_access_context,
-    resolve_member_scope,
-)
-from agentops.member_wiki.query import (
-    get_member_experience as query_get_member_experience,
-    search_member_experiences,
-)
-from agentops.meeting_summaries.query import (
-    get_meeting_summary as query_get_meeting_summary,
-    search_meeting_summaries as query_search_meeting_summaries,
-)
-from agentops.rag.authz import require_member
+try:  # production image exposes ``agentops``; source tests use ``agentops_local``
+    from agentops.project_wiki.query import (
+        get_decision_records as query_decision_records,
+        get_examples as query_examples,
+        get_page as query_get_page,
+        get_recent_updates as query_recent_updates,
+        get_related_nodes as query_related_nodes,
+        search_wiki as query_search_wiki,
+    )
+    from agentops.project_wiki.service import create_memory_proposal
+    from agentops.member_wiki.access import (
+        MemberWikiAccessError,
+        load_member_access_context,
+        resolve_member_scope,
+    )
+    from agentops.member_wiki.query import (
+        get_member_experience as query_get_member_experience,
+        search_member_experiences,
+    )
+    from agentops.meeting_summaries.query import (
+        get_meeting_summary as query_get_meeting_summary,
+        search_meeting_summaries as query_search_meeting_summaries,
+    )
+    from agentops.rag.authz import require_member
+    from agentops.wiki_mcp.materials import format_capabilities, material_item
+except ModuleNotFoundError:  # pragma: no cover - source-tree fallback
+    from agentops_local.project_wiki.query import (
+        get_decision_records as query_decision_records,
+        get_examples as query_examples,
+        get_page as query_get_page,
+        get_recent_updates as query_recent_updates,
+        get_related_nodes as query_related_nodes,
+        search_wiki as query_search_wiki,
+    )
+    from agentops_local.project_wiki.service import create_memory_proposal
+    from agentops_local.member_wiki.access import (
+        MemberWikiAccessError,
+        load_member_access_context,
+        resolve_member_scope,
+    )
+    from agentops_local.member_wiki.query import (
+        get_member_experience as query_get_member_experience,
+        search_member_experiences,
+    )
+    from agentops_local.meeting_summaries.query import (
+        get_meeting_summary as query_get_meeting_summary,
+        search_meeting_summaries as query_search_meeting_summaries,
+    )
+    from agentops_local.rag.authz import require_member
+    from agentops_local.wiki_mcp.materials import format_capabilities, material_item
 
 
 SessionFactory = Callable[[], AbstractContextManager]
+
+
+MATERIAL_CHUNKS_SQL = """(
+    SELECT v.id, v.document_id, v.project_id, v.chunk_index, v.content,
+           v.source_page, v.source_line, v.heading_path, v.content_tsv, v.created_at
+      FROM public.document_chunks_v2 v
+    UNION ALL
+    SELECT l.id, l.document_id, l.project_id, l.chunk_index, l.content,
+           l.source_page, l.source_line, NULL::text AS heading_path,
+           to_tsvector('simple', l.content) AS content_tsv, l.created_at
+      FROM public.document_chunks l
+     WHERE NOT EXISTS (
+         SELECT 1 FROM public.document_chunks_v2 v
+          WHERE v.document_id = l.document_id AND v.project_id = l.project_id
+     )
+)"""
+
+
+def _material_chunk_sql(sql: str):
+    """Prefer v2, retaining authorized legacy documents until their parser migrates."""
+    return text(sql.replace("public.document_chunks_v2", MATERIAL_CHUNKS_SQL))
 
 
 def _json_value(value: Any) -> Any:
@@ -452,7 +502,689 @@ class WikiOperations:
                 verified_only=verified_only,
                 limit=limit,
             )
+            if any(
+                getattr(item, "project_id", None) != resolved
+                for item in items
+            ):
+                raise RuntimeError(
+                    "Wiki search returned a page outside the resolved project"
+                )
         return {"project_id": str(resolved), "items": _json_value(items)}
+
+    @staticmethod
+    def _limit(value: int, *, maximum: int = 100) -> int:
+        return max(1, min(int(value), maximum))
+
+    @staticmethod
+    def _uuid(value: str, *, field: str) -> uuid.UUID:
+        try:
+            return uuid.UUID(str(value))
+        except ValueError as error:
+            raise ValueError(f"{field} must be a UUID") from error
+
+    def list_material_format_capabilities(
+        self,
+        *,
+        user_id: uuid.UUID,
+        project_id: str,
+    ) -> dict[str, Any]:
+        with self.session_factory() as orm:
+            resolved = self._resolve_project(orm, user_id=user_id, project_id=project_id)
+        return {
+            "project_id": str(resolved),
+            "items": format_capabilities(),
+            "note": "Accepted files are never executed. metadata_only formats are searchable by safe metadata until a dedicated parser is available.",
+        }
+
+    def list_knowledge_assets(
+        self,
+        *,
+        user_id: uuid.UUID,
+        project_id: str,
+        include_historical: bool = False,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        with self.session_factory() as orm:
+            resolved = self._resolve_project(orm, user_id=user_id, project_id=project_id)
+            rows = orm.execute(
+                text("""
+                    SELECT d.id AS document_id, d.filename, d.display_name,
+                           COALESCE(NULLIF(to_jsonb(f)->>'relative_path', ''),
+                                    NULLIF(to_jsonb(d)->>'source_relative_path', ''),
+                                    d.filename) AS relative_path,
+                           d.format, d.size_bytes, pmd.content_hash,
+                           d.asset_family_id, d.version_number, d.is_current,
+                           COALESCE(d.approval_status, 'approved') AS approval_status,
+                           d.chunk_count, d.created_at, d.updated_at
+                      FROM public.project_material_documents pmd
+                      JOIN public.documents d ON d.id = pmd.document_id
+                 LEFT JOIN public.project_material_intake_files f ON f.id = pmd.original_file_id
+                     WHERE pmd.project_id = :project_id
+                       AND d.project_id = :project_id
+                       AND d.status = 'ready'
+                       AND COALESCE(d.approval_status, 'approved') = 'approved'
+                       AND (:include_historical OR COALESCE(d.is_current, true) = true)
+                  ORDER BY COALESCE(d.effective_at, d.updated_at, d.created_at) DESC, d.id
+                     LIMIT :limit
+                """),
+                {
+                    "project_id": str(resolved),
+                    "include_historical": bool(include_historical),
+                    "limit": self._limit(limit),
+                },
+            ).mappings().all()
+        return {"project_id": str(resolved), "items": [material_item(row) for row in rows]}
+
+    def search_project_materials(
+        self,
+        *,
+        user_id: uuid.UUID,
+        project_id: str,
+        query: str,
+        include_historical: bool = False,
+        limit: int = 8,
+    ) -> dict[str, Any]:
+        cleaned = query.strip()
+        if not cleaned:
+            raise ValueError("query is required")
+        with self.session_factory() as orm:
+            resolved = self._resolve_project(orm, user_id=user_id, project_id=project_id)
+            rows = orm.execute(
+                _material_chunk_sql("""
+                    SELECT d.id AS document_id, d.filename, d.display_name,
+                           COALESCE(NULLIF(to_jsonb(f)->>'relative_path', ''),
+                                    NULLIF(to_jsonb(d)->>'source_relative_path', ''),
+                                    d.filename) AS relative_path,
+                           d.format, d.size_bytes, pmd.content_hash,
+                           d.asset_family_id, d.version_number, d.is_current,
+                           COALESCE(d.approval_status, 'approved') AS approval_status,
+                           d.chunk_count, d.created_at, d.updated_at,
+                           c.id AS chunk_id, c.chunk_index, c.source_page, c.source_line,
+                           c.heading_path, LEFT(c.content, 2000) AS excerpt,
+                           GREATEST(
+                               ts_rank(c.content_tsv, plainto_tsquery('simple', :query)),
+                               CASE WHEN c.content ILIKE :like_query THEN 0.35 ELSE 0 END,
+                               CASE WHEN d.filename ILIKE :like_query THEN 0.25 ELSE 0 END
+                           ) AS score
+                      FROM public.project_material_documents pmd
+                      JOIN public.documents d ON d.id = pmd.document_id
+                 LEFT JOIN public.document_chunks_v2 c ON c.document_id = d.id AND c.project_id = :project_id
+                 LEFT JOIN public.project_material_intake_files f ON f.id = pmd.original_file_id
+                     WHERE pmd.project_id = :project_id
+                       AND d.project_id = :project_id
+                       AND d.status = 'ready'
+                       AND COALESCE(d.approval_status, 'approved') = 'approved'
+                       AND (:include_historical OR COALESCE(d.is_current, true) = true)
+                       AND (
+                           c.content_tsv @@ plainto_tsquery('simple', :query)
+                           OR c.content ILIKE :like_query
+                           OR d.filename ILIKE :like_query
+                           OR COALESCE(to_jsonb(f)->>'relative_path', '') ILIKE :like_query
+                       )
+                  ORDER BY score DESC, c.created_at ASC
+                     LIMIT :limit
+                """),
+                {
+                    "project_id": str(resolved),
+                    "query": cleaned,
+                    "like_query": f"%{cleaned}%",
+                    "include_historical": bool(include_historical),
+                    "limit": self._limit(limit, maximum=30),
+                },
+            ).mappings().all()
+        return {
+            "project_id": str(resolved),
+            "query": cleaned,
+            "retrieval_version": "mcp-material-v1-safe-lexical",
+            "filters_applied": ["project_acl", "approved", "ready", "current_version" if not include_historical else "explicit_history"],
+            "items": [material_item(row, include_excerpt=True) for row in rows],
+        }
+
+    def get_document(
+        self,
+        *,
+        user_id: uuid.UUID,
+        project_id: str,
+        document_id: str,
+        include_historical: bool = False,
+        chunk_limit: int = 40,
+    ) -> dict[str, Any]:
+        parsed_id = self._uuid(document_id, field="document_id")
+        with self.session_factory() as orm:
+            resolved = self._resolve_project(orm, user_id=user_id, project_id=project_id)
+            rows = orm.execute(
+                _material_chunk_sql("""
+                    SELECT d.id AS document_id, d.filename, d.display_name,
+                           COALESCE(NULLIF(to_jsonb(f)->>'relative_path', ''),
+                                    NULLIF(to_jsonb(d)->>'source_relative_path', ''),
+                                    d.filename) AS relative_path,
+                           d.format, d.size_bytes, pmd.content_hash,
+                           d.asset_family_id, d.version_number, d.is_current,
+                           COALESCE(d.approval_status, 'approved') AS approval_status,
+                           d.chunk_count, d.created_at, d.updated_at,
+                           c.id AS chunk_id, c.chunk_index, c.source_page, c.source_line,
+                           c.heading_path, LEFT(c.content, 8000) AS excerpt, 1.0 AS score
+                      FROM public.project_material_documents pmd
+                      JOIN public.documents d ON d.id = pmd.document_id
+                 LEFT JOIN public.project_material_intake_files f ON f.id = pmd.original_file_id
+                 LEFT JOIN public.document_chunks_v2 c ON c.document_id = d.id AND c.project_id = :project_id
+                     WHERE pmd.project_id = :project_id AND d.project_id = :project_id
+                       AND d.id = :document_id AND d.status = 'ready'
+                       AND COALESCE(d.approval_status, 'approved') = 'approved'
+                       AND (:include_historical OR COALESCE(d.is_current, true) = true)
+                  ORDER BY c.chunk_index
+                     LIMIT :limit
+                """),
+                {
+                    "project_id": str(resolved),
+                    "document_id": str(parsed_id),
+                    "include_historical": bool(include_historical),
+                    "limit": self._limit(chunk_limit, maximum=100),
+                },
+            ).mappings().all()
+        if not rows:
+            raise ValueError("document not found, not approved, not current, or not accessible")
+        metadata = material_item(rows[0])
+        chunks = [
+            {
+                "block_id": str(row.get("chunk_id")),
+                "chunk_index": row.get("chunk_index"),
+                "content": str(row.get("excerpt") or ""),
+                "locator": material_item(row, include_excerpt=True)["locator"],
+            }
+            for row in rows if row.get("chunk_id") is not None
+        ]
+        return {
+            "project_id": str(resolved),
+            "document": metadata,
+            "chunks": chunks,
+            "truncated": metadata["chunk_count"] > len(chunks),
+            "next_chunk_index": len(chunks) if metadata["chunk_count"] > len(chunks) else None,
+        }
+
+    def get_document_part(
+        self,
+        *,
+        user_id: uuid.UUID,
+        project_id: str,
+        document_id: str,
+        block_id: str,
+        include_historical: bool = False,
+    ) -> dict[str, Any]:
+        parsed_document_id = self._uuid(document_id, field="document_id")
+        try:
+            parsed_block_id = uuid.UUID(block_id)
+            block_filter = "c.id = :block_id"
+            block_params: dict[str, Any] = {"block_id": str(parsed_block_id)}
+        except ValueError:
+            try:
+                chunk_index = int(block_id)
+            except ValueError as error:
+                raise ValueError("block_id must be a chunk UUID or non-negative chunk index") from error
+            if chunk_index < 0:
+                raise ValueError("block_id chunk index must be non-negative")
+            block_filter = "c.chunk_index = :chunk_index"
+            block_params = {"chunk_index": chunk_index}
+        with self.session_factory() as orm:
+            resolved = self._resolve_project(orm, user_id=user_id, project_id=project_id)
+            row = orm.execute(
+                _material_chunk_sql(f"""
+                    SELECT d.id AS document_id, d.filename, d.display_name,
+                           COALESCE(NULLIF(to_jsonb(f)->>'relative_path', ''), d.filename) AS relative_path,
+                           d.format, d.size_bytes, pmd.content_hash, d.asset_family_id,
+                           d.version_number, d.is_current,
+                           COALESCE(d.approval_status, 'approved') AS approval_status,
+                           d.chunk_count, d.created_at, d.updated_at,
+                           c.id AS chunk_id, c.chunk_index, c.source_page, c.source_line,
+                           c.heading_path, c.content AS excerpt, 1.0 AS score
+                      FROM public.project_material_documents pmd
+                      JOIN public.documents d ON d.id = pmd.document_id
+                      JOIN public.document_chunks_v2 c ON c.document_id = d.id AND c.project_id = :project_id
+                 LEFT JOIN public.project_material_intake_files f ON f.id = pmd.original_file_id
+                     WHERE pmd.project_id = :project_id AND d.project_id = :project_id
+                       AND d.id = :document_id AND d.status = 'ready'
+                       AND COALESCE(d.approval_status, 'approved') = 'approved'
+                       AND (:include_historical OR COALESCE(d.is_current, true) = true)
+                       AND {block_filter}
+                     LIMIT 1
+                """),
+                {
+                    "project_id": str(resolved),
+                    "document_id": str(parsed_document_id),
+                    "include_historical": bool(include_historical),
+                    **block_params,
+                },
+            ).mappings().first()
+        if row is None:
+            raise ValueError("document block not found or not accessible")
+        item = material_item(row, include_excerpt=True)
+        return {"project_id": str(resolved), "item": item}
+
+    def get_document_structure(
+        self,
+        *,
+        user_id: uuid.UUID,
+        project_id: str,
+        document_id: str,
+        include_historical: bool = False,
+        block_limit: int = 200,
+    ) -> dict[str, Any]:
+        """Return a safe, traceable outline without exposing raw storage bytes.
+
+        Headings are sourced from the indexed ``heading_path`` column.  The
+        operation is deliberately read-only and the returned outline is not a
+        publishable Wiki document; callers must obtain human confirmation
+        before turning it into a plan or gap list.
+        """
+        document = self.get_document(
+            user_id=user_id,
+            project_id=project_id,
+            document_id=document_id,
+            include_historical=include_historical,
+            chunk_limit=block_limit,
+        )
+        sections: list[dict[str, Any]] = []
+        by_path: dict[str, dict[str, Any]] = {}
+        for chunk in document.get("chunks", []):
+            locator = chunk.get("locator") or {}
+            heading_path = str(locator.get("heading_path") or "").strip()
+            section = by_path.get(heading_path)
+            if section is None:
+                section = {
+                    "heading_path": heading_path or None,
+                    "blocks": [],
+                }
+                by_path[heading_path] = section
+                sections.append(section)
+            section["blocks"].append(
+                {
+                    "block_id": chunk.get("block_id"),
+                    "chunk_index": chunk.get("chunk_index"),
+                    "content_excerpt": str(chunk.get("content") or "")[:2000],
+                    "locator": locator,
+                }
+            )
+        return {
+            "project_id": document["project_id"],
+            "document": document["document"],
+            "sections": sections,
+            "block_count": sum(len(section["blocks"]) for section in sections),
+            "truncated": bool(document.get("truncated")),
+            "manual_confirmation_required": True,
+            "publishable": False,
+        }
+
+    def validate_citations(
+        self,
+        *,
+        user_id: uuid.UUID,
+        project_id: str,
+        citations: list[dict[str, Any]],
+        include_historical: bool = False,
+    ) -> dict[str, Any]:
+        """Validate citation locators against approved project material only."""
+        if not isinstance(citations, list):
+            raise ValueError("citations must be a list")
+        if len(citations) > 100:
+            raise ValueError("citations cannot contain more than 100 items")
+        with self.session_factory() as orm:
+            resolved_project = self._resolve_project(
+                orm, user_id=user_id, project_id=project_id
+            )
+        validated: list[dict[str, Any]] = []
+        invalid: list[dict[str, Any]] = []
+        for index, citation in enumerate(citations):
+            if not isinstance(citation, dict):
+                invalid.append({"index": index, "reason": "citation must be an object"})
+                continue
+            document_id = citation.get("document_id") or (citation.get("locator") or {}).get("document_id")
+            locator = citation.get("locator") if isinstance(citation.get("locator"), dict) else citation
+            block_id = locator.get("block_id")
+            if block_id is None:
+                block_id = locator.get("chunk_id")
+            if block_id is None and "chunk_index" in locator:
+                block_id = locator.get("chunk_index")
+            if not document_id:
+                invalid.append({"index": index, "reason": "document_id is required"})
+                continue
+            try:
+                item = (
+                    self.get_document_part(
+                        user_id=user_id,
+                        project_id=project_id,
+                        document_id=str(document_id),
+                        block_id=str(block_id),
+                        include_historical=include_historical,
+                    )
+                    if block_id is not None
+                    else self.get_document(
+                        user_id=user_id,
+                        project_id=project_id,
+                        document_id=str(document_id),
+                        include_historical=include_historical,
+                        chunk_limit=1,
+                    )
+                )
+                resolved_item = item.get("item") or item.get("document")
+                resolved_locator = (resolved_item or {}).get("locator") or {}
+                locator_mismatches = []
+                for key in ("page", "line", "heading_path", "chunk_index", "relative_path"):
+                    if key in locator and locator.get(key) is not None:
+                        expected = str(locator.get(key))
+                        actual = resolved_locator.get(key)
+                        if actual is None or str(actual) != expected:
+                            locator_mismatches.append(key)
+                if locator_mismatches:
+                    invalid.append({
+                        "index": index,
+                        "reason": "citation locator does not match the approved document block",
+                        "fields": locator_mismatches,
+                    })
+                    continue
+                validated.append({
+                    "index": index,
+                    "valid": True,
+                    "citation": citation,
+                    "resolved": resolved_item,
+                })
+            except (ValueError, PermissionError) as error:
+                invalid.append({"index": index, "reason": str(error)})
+        return {
+            "project_id": str(resolved_project),
+            "valid": validated,
+            "invalid": invalid,
+            "all_valid": not invalid,
+            "manual_confirmation_required": False,
+            "publishable": False,
+        }
+
+    def get_latest_document(
+        self,
+        *,
+        user_id: uuid.UUID,
+        project_id: str,
+        logical_key: str,
+    ) -> dict[str, Any]:
+        key = logical_key.strip()
+        if not key:
+            raise ValueError("logical_key is required")
+        with self.session_factory() as orm:
+            resolved = self._resolve_project(orm, user_id=user_id, project_id=project_id)
+            rows = orm.execute(
+                text("""
+                    SELECT d.id AS document_id, d.filename, d.display_name,
+                           COALESCE(NULLIF(to_jsonb(f)->>'relative_path', ''), d.filename) AS relative_path,
+                           d.format, d.size_bytes, pmd.content_hash, d.asset_family_id,
+                           d.version_number, d.is_current,
+                           COALESCE(d.approval_status, 'approved') AS approval_status,
+                           d.chunk_count, d.created_at, d.updated_at
+                      FROM public.project_material_documents pmd
+                      JOIN public.documents d ON d.id = pmd.document_id
+                 LEFT JOIN public.project_material_intake_files f ON f.id = pmd.original_file_id
+                     WHERE pmd.project_id = :project_id AND d.project_id = :project_id
+                       AND d.status = 'ready'
+                       AND COALESCE(d.approval_status, 'approved') = 'approved'
+                       AND COALESCE(d.is_current, true) = true
+                       AND (d.asset_family_id::text = :logical_key
+                            OR lower(COALESCE(d.normalized_filename, d.filename)) = lower(:logical_key))
+                  ORDER BY COALESCE(d.version_number, 1) DESC,
+                           COALESCE(d.effective_at, d.updated_at, d.created_at) DESC
+                     LIMIT 1
+                """),
+                {"project_id": str(resolved), "logical_key": key},
+            ).mappings().all()
+        if not rows:
+            raise ValueError("latest document not found or not accessible")
+        return {"project_id": str(resolved), "item": material_item(rows[0])}
+
+    def compare_document_versions(
+        self,
+        *,
+        user_id: uuid.UUID,
+        project_id: str,
+        asset_family_id: str,
+        from_version: int,
+        to_version: int,
+    ) -> dict[str, Any]:
+        family_id = self._uuid(asset_family_id, field="asset_family_id")
+        if from_version < 1 or to_version < 1 or from_version == to_version:
+            raise ValueError("from_version and to_version must be distinct positive integers")
+        with self.session_factory() as orm:
+            resolved = self._resolve_project(orm, user_id=user_id, project_id=project_id)
+            rows = orm.execute(
+                text("""
+                    SELECT d.id AS document_id, d.filename, d.display_name,
+                           COALESCE(NULLIF(to_jsonb(f)->>'relative_path', ''), d.filename) AS relative_path,
+                           d.format, d.size_bytes, pmd.content_hash, d.asset_family_id,
+                           d.version_number, d.is_current,
+                           COALESCE(d.approval_status, 'approved') AS approval_status,
+                           d.chunk_count, d.created_at, d.updated_at
+                      FROM public.project_material_documents pmd
+                      JOIN public.documents d ON d.id = pmd.document_id
+                 LEFT JOIN public.project_material_intake_files f ON f.id = pmd.original_file_id
+                     WHERE pmd.project_id = :project_id AND d.project_id = :project_id
+                       AND d.asset_family_id = :asset_family_id
+                       AND d.version_number IN (:from_version, :to_version)
+                       AND d.status = 'ready'
+                       AND COALESCE(d.approval_status, 'approved') = 'approved'
+                  ORDER BY d.version_number
+                """),
+                {
+                    "project_id": str(resolved), "asset_family_id": str(family_id),
+                    "from_version": from_version, "to_version": to_version,
+                },
+            ).mappings().all()
+            by_version = {int(row["version_number"]): row for row in rows}
+            if from_version not in by_version or to_version not in by_version:
+                raise ValueError("both approved document versions must exist in the selected project")
+            changes = orm.execute(
+                _material_chunk_sql("""
+                    WITH old_chunks AS (
+                        SELECT chunk_index, md5(content) AS digest FROM public.document_chunks_v2 c
+                         WHERE project_id = :project_id AND document_id = :from_document_id
+                    ), new_chunks AS (
+                        SELECT chunk_index, md5(content) AS digest FROM public.document_chunks_v2 c
+                         WHERE project_id = :project_id AND document_id = :to_document_id
+                    )
+                    SELECT COALESCE(o.chunk_index, n.chunk_index) AS chunk_index,
+                           CASE WHEN o.chunk_index IS NULL THEN 'added'
+                                WHEN n.chunk_index IS NULL THEN 'removed'
+                                ELSE 'changed' END AS change_type
+                      FROM old_chunks o FULL OUTER JOIN new_chunks n USING (chunk_index)
+                     WHERE o.digest IS DISTINCT FROM n.digest
+                  ORDER BY chunk_index LIMIT 200
+                """),
+                {
+                    "project_id": str(resolved),
+                    "from_document_id": str(by_version[from_version]["document_id"]),
+                    "to_document_id": str(by_version[to_version]["document_id"]),
+                },
+            ).mappings().all()
+        return {
+            "project_id": str(resolved), "asset_family_id": str(family_id),
+            "from": material_item(by_version[from_version]),
+            "to": material_item(by_version[to_version]),
+            "changed_chunks": [dict(row) for row in changes],
+            "change_count": len(changes), "changes_truncated": len(changes) == 200,
+        }
+
+    def compare_versions(
+        self,
+        *,
+        user_id: uuid.UUID,
+        project_id: str,
+        asset_family_id: str,
+        from_version: int,
+        to_version: int,
+    ) -> dict[str, Any]:
+        """Task-MCP friendly alias for the explicit version comparison tool."""
+        return self.compare_document_versions(
+            user_id=user_id,
+            project_id=project_id,
+            asset_family_id=asset_family_id,
+            from_version=from_version,
+            to_version=to_version,
+        )
+
+    def get_recent_knowledge_updates(
+        self,
+        *,
+        user_id: uuid.UUID,
+        project_id: str,
+        since: str,
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        parsed_since = _parse_datetime(since)
+        if parsed_since is None:
+            raise ValueError("since is required")
+        with self.session_factory() as orm:
+            resolved = self._resolve_project(orm, user_id=user_id, project_id=project_id)
+            rows = orm.execute(
+                text("""
+                    SELECT d.id AS document_id, d.filename, d.display_name,
+                           COALESCE(NULLIF(to_jsonb(f)->>'relative_path', ''), d.filename) AS relative_path,
+                           d.format, d.size_bytes, pmd.content_hash, d.asset_family_id,
+                           d.version_number, d.is_current,
+                           COALESCE(d.approval_status, 'approved') AS approval_status,
+                           d.chunk_count, d.created_at, d.updated_at
+                      FROM public.project_material_documents pmd
+                      JOIN public.documents d ON d.id = pmd.document_id
+                 LEFT JOIN public.project_material_intake_files f ON f.id = pmd.original_file_id
+                     WHERE pmd.project_id = :project_id AND d.project_id = :project_id
+                       AND d.status = 'ready'
+                       AND COALESCE(d.approval_status, 'approved') = 'approved'
+                       AND COALESCE(d.is_current, true) = true
+                       AND d.updated_at >= :since
+                  ORDER BY d.updated_at DESC LIMIT :limit
+                """),
+                {"project_id": str(resolved), "since": parsed_since, "limit": self._limit(limit)},
+            ).mappings().all()
+        return {"project_id": str(resolved), "since": parsed_since.isoformat(), "items": [material_item(row) for row in rows]}
+
+    def build_evidence_pack(
+        self,
+        *,
+        user_id: uuid.UUID,
+        project_id: str,
+        query: str,
+        limit: int = 12,
+    ) -> dict[str, Any]:
+        search_result = self.search_project_materials(
+            user_id=user_id, project_id=project_id, query=query, limit=limit,
+        )
+        return {
+            "project_id": search_result["project_id"], "query": search_result["query"],
+            "retrieval_version": search_result["retrieval_version"],
+            "filters_applied": search_result["filters_applied"],
+            "items": search_result["items"],
+            "gaps": [] if search_result["items"] else ["No approved current project material matched the query."],
+            "conflicts": [],
+            "manual_confirmation_required": True,
+            "publishable": False,
+            "note": "Evidence packs, plan drafts, and gap lists are read-only suggestions; human confirmation is required before Wiki publication.",
+        }
+
+    def draft_project_plan(
+        self,
+        *,
+        user_id: uuid.UUID,
+        project_id: str,
+        goal: str,
+        constraints: list[str] | None = None,
+        limit: int = 12,
+    ) -> dict[str, Any]:
+        """Build a non-publishable plan outline backed by a cited evidence pack."""
+        cleaned_goal = goal.strip()
+        if not cleaned_goal:
+            raise ValueError("goal is required")
+        pack = self.build_evidence_pack(
+            user_id=user_id, project_id=project_id, query=cleaned_goal, limit=limit
+        )
+        return {
+            "project_id": pack["project_id"],
+            "goal": cleaned_goal,
+            "constraints": [str(item).strip() for item in (constraints or []) if str(item).strip()],
+            "status": "draft",
+            "publication_status": "not_published",
+            "sections": [
+                {"title": "目标与范围", "content": cleaned_goal},
+                {"title": "现状与依据", "evidence": pack["items"]},
+                {"title": "里程碑", "content": "待人工确认后补充"},
+                {"title": "风险与待确认问题", "content": pack["gaps"] or "待人工确认"},
+            ],
+            "evidence_pack": pack,
+            "manual_confirmation_required": True,
+            "publishable": False,
+        }
+
+    def list_knowledge_gaps(
+        self,
+        *,
+        user_id: uuid.UUID,
+        project_id: str,
+        query: str,
+        limit: int = 12,
+    ) -> dict[str, Any]:
+        """Return explicit evidence gaps; does not infer or publish facts."""
+        pack = self.build_evidence_pack(
+            user_id=user_id, project_id=project_id, query=query, limit=limit
+        )
+        gaps = list(pack["gaps"])
+        if pack["conflicts"]:
+            gaps.append("Approved current materials contain unresolved version conflicts.")
+        return {
+            "project_id": pack["project_id"],
+            "query": pack["query"],
+            "gaps": gaps,
+            "evidence_count": len(pack["items"]),
+            "manual_confirmation_required": True,
+            "publishable": False,
+        }
+
+    def get_approval_job_status(
+        self,
+        *,
+        user_id: uuid.UUID,
+        project_id: str,
+        job_id: str | None = None,
+        draft_id: str | None = None,
+    ) -> dict[str, Any]:
+        if bool(job_id) == bool(draft_id):
+            raise ValueError("provide exactly one of job_id or draft_id")
+        field = "job_id" if job_id else "draft_id"
+        parsed = self._uuid(job_id or draft_id or "", field=field)
+        with self.session_factory() as orm:
+            resolved = self._resolve_project(orm, user_id=user_id, project_id=project_id)
+            row = orm.execute(
+                text(f"""
+                    SELECT job.id AS job_id, job.draft_id, job.decision,
+                           job.status AS job_status, job.progress, job.current_step,
+                           job.error_message, job.attempt_count, job.started_at,
+                           job.completed_at, draft.approved_document_id AS document_id
+                      FROM public.project_memory_approval_jobs job
+                      JOIN public.project_memory_drafts draft ON draft.id = job.draft_id
+                    WHERE draft.project_id = :project_id AND job.{('id' if field == 'job_id' else 'draft_id')} = :handle_id
+                  ORDER BY job.created_at DESC LIMIT 1
+                """),
+                {"project_id": str(resolved), "handle_id": str(parsed)},
+            ).mappings().first()
+        if row is None:
+            raise ValueError("approval job not found or not accessible")
+        status = str(row["job_status"])
+        return {
+            "project_id": str(resolved), "job_id": str(row["job_id"]),
+            "draft_id": str(row["draft_id"]), "decision": str(row["decision"]),
+            "job_status": status, "progress": int(row["progress"] or 0),
+            "current_step": str(row["current_step"] or status),
+            "attempt_count": int(row["attempt_count"] or 0),
+            "started_at": str(row["started_at"]) if row["started_at"] else None,
+            "completed_at": str(row["completed_at"]) if row["completed_at"] else None,
+            "document_id": str(row["document_id"]) if row["document_id"] else None,
+            "pending": status in {"queued", "running"},
+            "terminal": status in {"completed", "failed"},
+            "has_error": bool(row["error_message"]),
+            "error_message": "Approval processing failed; see the SmartBrain review page for details." if row["error_message"] else None,
+        }
 
     def get_page(
         self,
@@ -567,6 +1299,28 @@ class WikiOperations:
                 limit=limit,
             )
         return {"project_id": str(resolved), "items": _json_value(items)}
+
+    def record_conversation(
+        self, *, user_id: uuid.UUID, scopes: list[str], project_id: str,
+        submission_id: str, title: str, messages: list[dict[str, str]],
+        task_result: str = '', model: str | None = None,
+    ) -> dict[str, Any]:
+        if 'wiki:propose' not in scopes:
+            raise PermissionError('This token requires the wiki:propose scope')
+        try:
+            resolved = uuid.UUID(str(project_id))
+        except (ValueError, TypeError) as error:
+            raise ValueError('project_id must be an explicit UUID from the project AGENTS.md') from error
+        submission = validate_submission(submission_id=submission_id, title=title,
+            messages=messages, task_result=task_result, model=model)
+        try:
+            with self.session_factory() as orm:
+                receipt = save_project_conversation(orm, user_id=user_id,
+                    project_id=resolved, submission=submission)
+        except SQLAlchemyError:
+            raise RuntimeError('record_save_failed; retry the same submission_id with identical content') from None
+        # session_scope commits on exit; never acknowledge before that succeeds.
+        return receipt
 
     def propose(
         self,

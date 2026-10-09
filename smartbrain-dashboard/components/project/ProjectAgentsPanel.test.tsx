@@ -39,12 +39,14 @@ describe('ProjectAgentsPanel', () => {
     expect(api.upload).not.toHaveBeenCalled();
   });
 
-  it('checks the project-specific desktop adapter without asking users to paste a token', async () => {
-    const user = userEvent.setup();
-    render(<ProjectAgentsPanel projectId="p1" projectName="测试项目" canManage />);
-    expect(await screen.findByText(/不需要写提示词或手工添加请求头/)).toBeInTheDocument();
-    await user.click(await screen.findByRole('button', { name: '检测本机适配器' }));
-    expect(api.adapter).toHaveBeenCalled();
-    expect(await screen.findByText('本项目适配器已连接；令牌会在后台自动获取、续期并随请求携带')).toBeInTheDocument();
+  it.each([true, false])('uses company-memory without adapter UI or detection (manager=%s)', async (canManage) => {
+    render(<ProjectAgentsPanel projectId="p1" projectName="测试项目" canManage={canManage} />);
+    expect(await screen.findByText(/record_project_conversation/)).toBeInTheDocument();
+    expect(screen.queryByText(/本项目桌面适配器|专用端口|Provider 地址|尚未检测/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /适配器|一键启动器/ })).not.toBeInTheDocument();
+    expect(document.querySelector('a[href*="/downloads/"]')).toBeNull();
+    expect(api.adapter).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: '下载' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('上传 AGENTS.md') !== null).toBe(canManage);
   });
 });
