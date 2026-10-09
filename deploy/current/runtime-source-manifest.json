@@ -1465,7 +1465,7 @@
     }
   },
   "configuration_files": {
-    "clickhouse/backup-disk.xml": "ecf3efd265105bff68ee400364c073f53e256da913b9255d418f7e253ee284b1"
+    "clickhouse/backup-disk.xml": "e14fd07b4f175eccaab22c1dfde8d5bb08ea377fdfceb8828e06db7dd56643cd"
   },
-  "configuration_observed_at": "2026-10-09T09:51:45.961488+00:00"
+  "configuration_observed_at": "2026-10-09T10:51:13.476604+00:00"
 }

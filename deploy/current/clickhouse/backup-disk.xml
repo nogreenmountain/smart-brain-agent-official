@@ -19,4 +19,8 @@
     <number_of_free_entries_in_pool_to_lower_max_size_of_merge>1</number_of_free_entries_in_pool_to_lower_max_size_of_merge>
     <number_of_free_entries_in_pool_to_execute_optimize_entire_partition>1</number_of_free_entries_in_pool_to_execute_optimize_entire_partition>
   </merge_tree>
+
+  <metric_log>
+    <settings>index_granularity = 8192, max_compress_block_size = 65536</settings>
+  </metric_log>
 </clickhouse>

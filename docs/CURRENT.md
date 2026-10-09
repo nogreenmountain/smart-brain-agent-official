@@ -1,5 +1,11 @@
 # 智慧大脑开发与发布状态入口
 
+## 2026-10-09 18:51 ClickHouse宽表输出缓冲修复已发布（整夜观察继续）
+
+核对时间：18:50执行/18:51独立复核。[诊断与自审](plans/2026-10-09-clickhouse-wide-buffer.md)／[窄发布r2](releases/overnight-clickhouse-buffer-20261009-r2.md)：实际1136列metric_log Horizontal输出创建全部列缓冲触发Code241，同版本r3复现/单改64KiB通过、r4两路合并0 Code241及真实系统表配置/重启/测试回退保持UUID。生产仅表级max_compress_block_size65536、backup-disk.xml原inode同步重载，SHAe14fd07b；pool2/ratio1保持，**本次没有重启生产容器**，CH仍17:49启动/PID930830。
+
+全部1025容器完整配置及代际、23业务对象UUID/结构hash/元数据行数、8公网/个人current预算/edge/backup20通过；metric UUID保持，无历史表更名。Code2417705/最后18:49:57，18:51未增，metric parts约323→38且合并推进；两个完整后继窗口和整夜仍待。Docker40.19GiB/cold252.22GiB储备薄，继续实时门禁。r3/r4/发布均终态不重放，原observer95565b7d和有限heartbeat继续；无真实模型主动调用/删除历史/生产回退，完整PG/冻结恢复/30人真实容量仍未验。
+
 ## 2026-10-09 17:57夜间ClickHouse限并行已发布（内存问题仍待）
 
 核对时间：2026-10-09 17:51/17:57（Asia/Shanghai）。[实际发布](releases/overnight-clickhouse-20261009-r1.md)／[具体自审](plans/2026-10-09-overnight-clickhouse.md)：CH原CIDf0a0f6eb/imagecd450891仅配置改pool2/ratio1及三个阈值1，SHAecf3efd2；原单文件bind inode保持，17:49:40Z精确CH短停启动一次。双锁/备份20登记/四盘门槛通过，隔离同版本20000行及restart读回通过；1022无关完整容器配置代际保持、39运行、4原业务表元数据行数/8公网入口/个人/edge通过，无DDL或主动模型。
@@ -7,6 +13,12 @@
 17:57后台任务2、CPU节流1/50周期（原50/50）、text_log parts88→25持续推进，**Code241仍有新增**，单次合并内存峰值待后续实验，不能称完全修好。原observer95565b7d继续，无需重建；baseline里的CH启动告警对应本次受控变更，新StartedAt2026-10-09T09:49:40.337495161Z/PID930830。旧test/发布均终态不重跑；回退尚未实际执行。23部署工具/source检查通过，official新交付分支准备中。
 
 18:01后继核对：两个5分钟窗口Code241仍新增，保持局部限并行效果；cold238.75–242.18GiB低于250GiB储备，新合并结果/inactive parts可见，差额来源尚未完全核对。暂停进一步生产变更/大型测试和归档，观察正常parts回收，不prune/删历史。原采样与heartbeat继续、10样本无缺口/新OOM/收集错误，个人网关0排队/DB0/无超时及落库失败。official分支codex/overnight-operations-20261009提交8430aa6已push/远端核对，main431022b不变；全夜尚未完成。
+
+## 2026-10-09 17:30夜间运维已开始（进行中）
+
+核对时间：2026-10-09 17:22–17:30（Asia/Shanghai）。[方案/自审](plans/2026-10-09-overnight-operations.md)／[任务](tasks/2026-10-09-overnight-operations.md)：用户本轮授权自行审核开始，截止10-10 08:30。服务器只读observer每5分钟，当前r2 Invocation95565b7d…/PID872681、active/running、11项Linux边界通过；同对话heartbeat `10-10-08-30` ACTIVE每30分钟，截止同上。只观察原runner，禁止重放本次install/start/update/resume或旧发布/模型/备份批次。
+
+个人70583b47/image6c9a5779、8/24/DB3、39运行、edge双视图、公网200/匿名401保持；1执行/0排队/DB0、无锁等待/新OOM。Docker首轮39.97GiB低于40GiB发布储备，暂停新build/业务部署/大归档，跟踪趋势；CH内部日志仍实时Code241，r2已补真实错误文件采样，未修改CH业务配置。备份timer次日02:58:03，现inactive/success，仅观察原正常批次。无业务服务重启、生产DB写入/主动模型调用或历史清理。整夜尚未完成，08:30后总结/停续跑；Codex诊断依赖本机应用联网运行，远端采样可独立执行。
 
 ## 2026-10-09 16:56个人API截断修复上线，上游过载仍存在
 

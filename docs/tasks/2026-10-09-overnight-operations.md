@@ -56,3 +56,11 @@
 18:08再核对：cold271892676608字节（253.22GiB）重新超过250GiB，先前text_log inactive大parts已从只读前8清单消失；本轮没有手工清理。正常回收支持临时合并副本占空间的解释，但其他增长来源仍需趋势核对。Docker43683471360字节（40.68GiB）；CH重启后Code241累计1621/最新18:08仍新增。保持局部并行改善，下一阶段仅先查单次合并block/宽表和隔离候选，不直接继续改生产。交付工作树当前official新分支14ad3d028d1634cf456c304f09733f4c5da0a9e5（18:04远端一致，干净），无PR/main改动。心跳已补本轮现场和禁止重放步骤，ACTIVE读回，observer原r2继续。
 
 18:09心跳读回ACTIVE并补充最新现场。为容纳模型/调度延迟，日程增加到次日09:30的**仅收尾**窗口；业务处置与collector硬截止仍08:30。首次08:30或之后唤醒只能写报告/核对终态/暂停本心跳，不新开生产调整。官方分支后继6ab33fc93f6c111500f0d8130e7c0ec0ea5996c7已核对；本轮测试/候选/发布runner终态，唯原observer/heartbeat继续。
+
+18:30–18:36后继：observer原r2/SHA保持，16样本/无缺口/采集错误/host OOM；个人仍35个200/1个499/3个502，18:00后无新个人完成记录，不能将无流量窗口称实际模型成功验收。公网/edge/备份保持；cold253.21GiB、Docker40.54GiB。CH Code241继续，18:36累计5738；已核对metric_log1136列/多数Compact、32–33-part Horizontal输出在WriterWide创建流时分配失败，实际版本源码与默认压缩buffer1MiB相符。
+
+18:42–18:47新隔离r3/r4通过：r3默认复现Code241，仅表级max_compress_block_size64KiB后12800行/1132数值列聚合保持；r4两个32part宽表同时合并、合计跟踪内存约966MB/0 Code241，真实system.metric_log ALTER/配置重载/重启和测试回退保持UUID/行数、无自动更名。测试无网络/端口，足迹66.8/145.7MB，全部停止保留。方案和自审：[宽表buffer](../plans/2026-10-09-clickhouse-wide-buffer.md)。
+
+18:50生产窄发布：[记录](../releases/overnight-clickhouse-buffer-20261009-r2.md)。双锁/backup20/最新四盘和内存通过，仅system.metric_log表级max_compress_block_size65536及原inodeXML同步/重载，SHA **e14fd07b4f175eccaab22c1dfde8d5bb08ea377fdfceb8828e06db7dd56643cd**；无生产容器重启、日志删除或业务表修改。CH同CID/image/17:49启动/PID930830，metric UUID157524f1保持。18:51独立核对全部1025容器配置代际、23业务对象UUID/结构hash和元数据行数、8公网/个人current预算/edge/备份通过。
+
+18:51短效果：Code241仍7705/最后18:49:57，metric parts约323→38，大合并推进；两个完整后继窗口及整夜待观察。Docker40.19GiB/cold252.22GiB，储备薄，保持门禁。r3/r4/promote_ch_metric_buffer_r2全部终态，禁止重放；只观察原observer、ch_merge_space/verify和后继样本。交付XML/hash同步待本轮提交，不改原包/镜像。
