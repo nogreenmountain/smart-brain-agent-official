@@ -28,3 +28,5 @@
 证据：.artifacts/overnight-operations-20261009/ch-{wide-buffer-r3,buffer-persistence-r4,metric-buffer-r2-result,metric-buffer-r2-verified}.json；远端对应限权证据保留。r3/r4、发布runner全部终态，不重放；原observer/heartbeat继续。
 
 18:58：18:57计数仍7705/最后18:49:57，无新增；首个跨发布的18:54采样仍有旧错误，两个完全后继窗口待核对。修复及当前XML/manifest/release-lock/AI-DEPLOY已在official分支codex/overnight-operations-20261009推送，提交778349b18d8b00d635cf276051abd51b254a1b64远端一致，main不变。23部署工具测试/sources通过；文档镜像已核对，有限heartbeat ACTIVE读回。本阶段没有新增大归档，薄储备继续观察。
+
+19:01：首个完全后继18:54:48–18:59:48采样窗口0 Code241，直接累计仍7705/最新18:49:57；metric parts进一步21，cold253.31GiB/Docker40.18GiB，未观察到新OOM。第二个完全后继窗口及整夜趋势仍待，不能称所有资源压力已消除；cgroup max事件从18:43的2503到19:01的3492，发生时刻尚未逐条定位。

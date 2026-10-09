@@ -6,6 +6,8 @@
 
 全部1025容器完整配置及代际、23业务对象UUID/结构hash/元数据行数、8公网/个人current预算/edge/backup20通过；metric UUID保持，无历史表更名。Code2417705/最后18:49:57，18:51未增，metric parts约323→38且合并推进；两个完整后继窗口和整夜仍待。Docker40.19GiB/cold252.22GiB储备薄，继续实时门禁。r3/r4/发布均终态不重放，原observer95565b7d和有限heartbeat继续；无真实模型主动调用/删除历史/生产回退，完整PG/冻结恢复/30人真实容量仍未验。
 
+19:01后继：首个完整18:54–18:59窗口Code241=0，累计仍7705/最后18:49:57；metric parts21。22样本无缺口/采集错误/host OOM，cold253.31GiB/Docker40.18GiB，储备仍薄；cgroup max事件有所增加、时间未定位，不称资源压力全部解决。第二个完整后继窗口和整夜继续核对。修复778349b与收尾122cd8f已推official/远端一致，23部署测试/sources通过，main保持。
+
 ## 2026-10-09 17:57夜间ClickHouse限并行已发布（内存问题仍待）
 
 核对时间：2026-10-09 17:51/17:57（Asia/Shanghai）。[实际发布](releases/overnight-clickhouse-20261009-r1.md)／[具体自审](plans/2026-10-09-overnight-clickhouse.md)：CH原CIDf0a0f6eb/imagecd450891仅配置改pool2/ratio1及三个阈值1，SHAecf3efd2；原单文件bind inode保持，17:49:40Z精确CH短停启动一次。双锁/备份20登记/四盘门槛通过，隔离同版本20000行及restart读回通过；1022无关完整容器配置代际保持、39运行、4原业务表元数据行数/8公网入口/个人/edge通过，无DDL或主动模型。
