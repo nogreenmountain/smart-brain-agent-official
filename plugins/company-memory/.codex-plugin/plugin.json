@@ -1,7 +1,7 @@
 {
   "name": "company-memory",
-  "version": "0.1.0+codex.20260810081637",
-  "description": "Search SmartBrain project memory, privacy-scoped member experience, and project meeting summaries; publish identity-attributed project knowledge after safety checks.",
+  "version": "0.2.1+codex.20261008",
+  "description": "Search SmartBrain project, member and meeting knowledge; publish trusted knowledge and explicitly authorized project conversation records with server-attributed receipts.",
   "author": {
     "name": "SmartBrain"
   },

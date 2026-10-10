@@ -268,7 +268,7 @@ export function ProjectMembersPanel({ project, currentUser, canManage }: Project
             <div>角色</div>
             {canManage && <div className="text-right">操作</div>}
           </div>
-          <div className="max-h-[440px] divide-y divide-[#d7e0ec] overflow-y-auto [scrollbar-gutter:stable]">
+          <div className="divide-y divide-[#d7e0ec]">
             {members.map((member) => {
               const isCurrentUser = member.user_id === currentUser?.user_id;
               const canOperateMember = canAssignOwner || member.role !== 'owner';

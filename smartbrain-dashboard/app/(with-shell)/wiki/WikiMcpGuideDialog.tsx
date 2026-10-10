@@ -18,9 +18,9 @@ const DISMISSED_STORAGE_KEY = 'smartbrain:wiki-mcp-guide:dismissed';
 const STEPS = [
   {
     icon: TerminalSquare,
-    title: '确认已安装 Codex CLI',
-    description: '先确认本机已安装 Codex CLI，并且 codex.cmd 或 codex.exe 已加入系统 PATH。',
-    detail: '可以在终端运行 codex.cmd --version 检查。',
+    title: '确认可用的 Codex',
+    description: '兼容已安装的 Codex CLI；没有 CLI 时，安装器会查找桌面端附带的可用程序。',
+    detail: '安装器会核对安装后的插件版本，未通过时会提示失败。',
   },
   {
     icon: KeyRound,
@@ -36,9 +36,9 @@ const STEPS = [
   },
   {
     icon: MonitorUp,
-    title: '同步到 ChatGPT 桌面端',
-    description: '安装成功后，完全退出并重新启动 ChatGPT 桌面端，然后新建一个 Codex 任务。',
-    detail: '插件用于桌面端的 Codex 模式；普通 ChatGPT 对话目前不会读取这套本地 MCP 配置。',
+    title: '在新对话中加载',
+    description: '首次保存新 Token 后完全退出并重新启动 ChatGPT 桌面端；保留原 Token 更新插件后，新建一个 Codex 对话。',
+    detail: '已打开的对话使用原技能快照。新版本需由新对话或新 CLI 会话加载。',
   },
 ] as const;
 
@@ -101,6 +101,7 @@ export function WikiMcpGuideDialog() {
               </p>
             </div>
           </div>
+          <p className="mt-3 text-sm leading-6 text-[#253655]">已有插件：点击“更新 Company Memory”，不用新建 Token。最新版本仅提交简短的用户请求和最终结果摘要，不含思考过程、进度或工具日志；工具名为 record_project_conversation。</p>
 
           <ol className="mt-5 grid gap-3 sm:grid-cols-2">
             {STEPS.map((step, index) => {

@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   createProjectWikiMcpToken: vi.fn(),
   downloadClaudeCodeInstaller: vi.fn(),
   downloadCodexInstaller: vi.fn(),
+  downloadCodexUpdater: vi.fn(),
   getProjectWikiOverview: vi.fn(),
   getMemberWikiOptions: vi.fn(),
   getMemberWikiOverview: vi.fn(),
@@ -22,6 +23,9 @@ const mocks = vi.hoisted(() => ({
 vi.mock('@/utils/codex-plugin-installer', () => ({
   CODEX_PLUGIN_BUNDLE_PATH: '/downloads/smartbrain-company-memory-codex.zip',
   downloadCodexInstaller: mocks.downloadCodexInstaller,
+  downloadCodexUpdater: mocks.downloadCodexUpdater,
+  CODEX_PLUGIN_VERSION: '0.2.1+codex.20261008',
+  CODEX_UPDATER_PATH: '/downloads/SmartBrain-Company-Memory-Update.ps1',
 }));
 
 vi.mock('@/utils/claude-code-installer', () => ({
@@ -129,6 +133,7 @@ describe('ProjectWikiPage', () => {
     mocks.createProjectWikiMcpToken.mockReset();
     mocks.downloadClaudeCodeInstaller.mockReset();
     mocks.downloadCodexInstaller.mockReset();
+    mocks.downloadCodexUpdater.mockReset();
     mocks.getProjectWikiOverview.mockReset();
     mocks.getMemberWikiOptions.mockReset();
     mocks.getMemberWikiOverview.mockReset();
@@ -270,6 +275,22 @@ describe('ProjectWikiPage', () => {
     expect(screen.getByDisplayValue('sbmcp_visible_once')).toBeInTheDocument();
   });
 
+  it('updates Company Memory without creating or replacing a token', async () => {
+    window.localStorage.setItem('smartbrain:wiki-mcp-guide:dismissed', '1');
+    const user = userEvent.setup();
+    render(<ProjectWikiPage />);
+    const updateButton = await screen.findByRole('button', { name: '更新 Company Memory' });
+    expect(updateButton).toBeEnabled();
+    expect(screen.getByText(/最新版本：0.2.1/)).toBeInTheDocument();
+    await user.click(updateButton);
+    expect(mocks.downloadCodexUpdater).toHaveBeenCalledWith({
+      endpoint: 'http://localhost:8010/mcp',
+      bundleUrl: 'http://localhost:3000/downloads/smartbrain-company-memory-codex.zip',
+      updaterUrl: 'http://localhost:3000/downloads/SmartBrain-Company-Memory-Update.ps1',
+    });
+    expect(mocks.createProjectWikiMcpToken).not.toHaveBeenCalled();
+  });
+
   it('downloads a complete Codex plugin installer after creating a token', async () => {
     const user = userEvent.setup();
     render(<ProjectWikiPage />);
@@ -312,7 +333,7 @@ describe('ProjectWikiPage', () => {
     render(<ProjectWikiPage />);
 
     const dialog = await screen.findByRole('dialog', { name: '智慧大脑 MCP 使用指引' });
-    expect(dialog).toHaveTextContent('先确认本机已安装 Codex CLI');
+    expect(dialog).toHaveTextContent('兼容已安装的 Codex CLI');
     expect(dialog).toHaveTextContent('是否允许直接写入项目 Wiki');
     expect(dialog).toHaveTextContent('通过权限、来源与安全检查后会直接发布');
     expect(dialog).toHaveTextContent('创建 Token');

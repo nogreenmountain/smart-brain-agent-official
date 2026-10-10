@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import hashlib
 import logging
 import secrets
@@ -1186,12 +1187,16 @@ def _attach_messages(
     ).all()
     messages: dict[str, list[UsageMessage]] = {}
     for row in rows:
-        if str(row.role or '').lower() not in {'user', 'assistant'}:
+        role = str(row.role or '').lower()
+        if role not in {'user', 'assistant'}:
+            continue
+        content = _clean_visible_message(role, str(row.content or ''))
+        if not content:
             continue
         messages.setdefault(str(row.session_id), []).append(
             UsageMessage(
-                role=row.role,
-                content=row.content,
+                role=role,
+                content=content,
                 token_count=row.token_count,
                 created_at=row.created_at,
             )
@@ -1202,6 +1207,35 @@ def _attach_messages(
         else item
         for item in records
     ]
+
+
+_INTERNAL_CONTEXT_BLOCK = re.compile(
+    r"<environment_context\b[^>]*>.*?</environment_context\s*>|"
+    r"<external_codex_apps_open_page\b[^>]*>.*?</external_codex_apps_open_page\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+_CONVERSATION_SPEAKER = re.compile(r"(?:^|\n)\s*\*\*(用户|AI|assistant|user)\*\*\s*\n?", re.IGNORECASE)
+
+
+def _clean_visible_message(role: str, content: str) -> str:
+    """Keep the user-facing exchange and remove agent/runtime envelopes."""
+    cleaned = _INTERNAL_CONTEXT_BLOCK.sub("", content).strip()
+    matches = list(_CONVERSATION_SPEAKER.finditer(cleaned))
+    if matches:
+        wanted = "用户" if role == "user" else "ai"
+        selected = None
+        for index, match in enumerate(matches):
+            label = match.group(1).lower()
+            normalized = "用户" if label in {"用户", "user"} else "ai"
+            if normalized != wanted:
+                continue
+            start = match.end()
+            end = matches[index + 1].start() if index + 1 < len(matches) else len(cleaned)
+            selected = cleaned[start:end].strip()
+            break
+        if selected is not None:
+            cleaned = selected
+    return cleaned
 
 
 def _merge_synced_conversations(

@@ -1,0 +1,6 @@
+# Candidate only: caller must pin the exact active MCP image ID/digest.
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY agentops_local/wiki_mcp/server.py agentops_local/wiki_mcp/operations.py agentops_local/wiki_mcp/materials.py /app/agentops/wiki_mcp/
+COPY agentops_local/project_memory/conversations.py /app/agentops/project_memory/conversations.py
+# Inherit runtime dependencies, authentication, environment and CMD from base.

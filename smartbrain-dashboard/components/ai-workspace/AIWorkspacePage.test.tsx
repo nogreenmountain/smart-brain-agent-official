@@ -37,4 +37,12 @@ describe('AIWorkspacePage', () => {
     expect(await screen.findByText('records panel')).toBeInTheDocument();
     expect(screen.queryByRole('tab', { name: '设备与同步' })).not.toBeInTheDocument();
   });
+
+  it('uses the workspace panel as the single vertical scroll container', async () => {
+    render(<AIWorkspacePage initialView="records" />);
+
+    const panel = await screen.findByRole('tabpanel');
+    expect(panel).toHaveClass('overflow-y-auto', 'overscroll-contain');
+    expect(panel).not.toHaveClass('overflow-hidden');
+  });
 });

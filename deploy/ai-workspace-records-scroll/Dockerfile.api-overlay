@@ -1,0 +1,3 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY --chmod=0644 agentops_local/api/routes/v4/ai_usage.py /app/agentops/api/routes/v4/ai_usage.py

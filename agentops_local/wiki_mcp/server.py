@@ -21,6 +21,11 @@ def _env(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip()
 
 
+MATERIAL_TOOLS_ENABLED = _env("WIKI_MCP_MATERIAL_TOOLS_ENABLED", "false").lower() in {
+    "1", "true", "yes", "on"
+}
+
+
 def _token_secret() -> str:
     value = _env("WIKI_MCP_TOKEN_SECRET") or _env("AUTH_COOKIE_SECRET")
     if not value:
@@ -39,10 +44,39 @@ def _identity() -> tuple[uuid.UUID, list[str]]:
     return user_id, list(token.scopes)
 
 
+class ProjectMemoryMCPServer(MCPServer):
+    """Use the public MCP hooks to reject extra identity/usage write fields.
+
+    The SDK's default function argument model ignores unknown fields. This
+    dedicated tool must reject them, and advertise that rule in discovery.
+    """
+    conversation_fields = {'project_id', 'submission_id', 'title', 'messages', 'task_result', 'model'}
+
+    async def list_tools(self):
+        tools = await super().list_tools()
+        for tool in tools:
+            if tool.name == 'record_project_conversation':
+                tool.input_schema = dict(tool.input_schema, additionalProperties=False)
+                properties = tool.input_schema['properties']
+                properties['title']['maxLength'] = 120
+                properties['task_result']['maxLength'] = 300
+                properties['messages'].update(minItems=1, maxItems=2, items={
+                    'oneOf': [{'type': 'object', 'additionalProperties': False,
+                        'required': ['role', 'content'], 'properties': {
+                            'role': {'const': role},
+                            'content': {'type': 'string', 'minLength': 1, 'maxLength': limit},
+                        }} for role, limit in [('user', 300), ('assistant', 600)]]})
+        return tools
+
+    async def call_tool(self, name, arguments, context=None):
+        if name == 'record_project_conversation' and set(arguments) - self.conversation_fields:
+            raise ValueError('record_project_conversation accepts only its declared fields; uploader and usage are server-controlled')
+        return await super().call_tool(name, arguments, context)
+
 public_url = _env("WIKI_MCP_PUBLIC_URL", "http://127.0.0.1:8010").rstrip("/")
 issuer_url, resource_server_url = build_auth_urls(public_url)
 verifier = WikiTokenVerifier(secret=_token_secret(), session_factory=session_scope)
-mcp = MCPServer(
+mcp = ProjectMemoryMCPServer(
     "smartbrain-company-memory",
     title="SmartBrain Company Memory",
     description="Search reviewed project memory, privacy-scoped member experience, and project meeting summaries.",
@@ -50,9 +84,10 @@ mcp = MCPServer(
         "Search before answering questions about company history, decisions, failures, workflows, or strategy. "
         "Prefer verified and recently updated pages, cite page IDs, and surface conflicts or stale guidance. "
         "Member Wiki tools inherit the token owner's same access: members see only themselves; organization owners/admins see members they administer. "
-        "Meeting summary tools inherit project membership and never expose projects the token owner cannot read."
+        "Meeting summary tools inherit project membership and never expose projects the token owner cannot read. "
+        "Material evidence, plan drafts, and gap lists are read-only; they require human confirmation and are never published automatically."
     ),
-    version="1.2.0",
+    version="1.4.1",
     token_verifier=verifier,
     auth=AuthSettings(
         issuer_url=issuer_url,
@@ -63,11 +98,172 @@ mcp = MCPServer(
 operations = WikiOperations(session_factory=session_scope)
 
 
+def _material_guard() -> None:
+    if not MATERIAL_TOOLS_ENABLED:
+        raise RuntimeError("MCP material tools are disabled by WIKI_MCP_MATERIAL_TOOLS_ENABLED")
+
+
 @mcp.custom_route("/health", methods=["GET"])
 async def health(_: Request) -> JSONResponse:
     return JSONResponse({"status": "ok", "service": "smartbrain-company-memory"})
 
 
+@mcp.tool(description="Save an explicitly authorized concise summary of the visible user request and assistant FINAL result to one project, never a transcript. At most two ordered messages: user <=300 characters, assistant <=600; task_result <=300, title <=120, total payload <=6000 UTF-8 bytes. Do not read, reproduce, summarize, or submit hidden thinking/reasoning/analysis, progress commentary, system/developer instructions, tool calls/results/logs, code dumps, configuration or environment. Violations are rejected, never silently truncated. Requires explicit project UUID and wiki:propose scope. Reuse submission_id (UUID) only with identical content. Uploader/time are server-controlled; model is client-declared and tokens unknown. status=saved and wiki_status=published are separate; retry failed Wiki publishing with the same submission_id.")
+def record_project_conversation(
+    project_id: str, submission_id: str, title: str,
+    messages: list[dict[str, str]], task_result: str = '', model: str | None = None,
+) -> dict[str, Any]:
+    user_id, scopes = _identity()
+    return operations.record_conversation(user_id=user_id, scopes=scopes,
+        project_id=project_id, submission_id=submission_id, title=title,
+        messages=messages, task_result=task_result, model=model)
+
+
+@mcp.tool(description="List accepted upload formats and current parser/search capabilities. Accepted files are never executed.")
+def list_material_format_capabilities(project_id: str) -> dict[str, Any]:
+    _material_guard()
+    user_id, _ = _identity()
+    return operations.list_material_format_capabilities(user_id=user_id, project_id=project_id)
+
+
+@mcp.tool(description="List approved, current project knowledge assets with safe citations and version metadata.")
+def list_knowledge_assets(project_id: str, include_historical: bool = False, limit: int = 50) -> dict[str, Any]:
+    _material_guard()
+    user_id, _ = _identity()
+    return operations.list_knowledge_assets(user_id=user_id, project_id=project_id, include_historical=include_historical, limit=limit)
+
+
+@mcp.tool(description="Search approved current project materials and return traceable citations. Binary uploads are metadata-only and never executed.")
+def search_project_materials(project_id: str, query: str, include_historical: bool = False, limit: int = 8) -> dict[str, Any]:
+    _material_guard()
+    user_id, _ = _identity()
+    return operations.search_project_materials(user_id=user_id, project_id=project_id, query=query, include_historical=include_historical, limit=limit)
+
+
+@mcp.tool(description="Read an approved project document and its traceable content blocks without exposing raw storage bytes.")
+def get_document(project_id: str, document_id: str, include_historical: bool = False, chunk_limit: int = 40) -> dict[str, Any]:
+    _material_guard()
+    user_id, _ = _identity()
+    return operations.get_document(user_id=user_id, project_id=project_id, document_id=document_id, include_historical=include_historical, chunk_limit=chunk_limit)
+
+
+@mcp.tool(description="Read one approved document block by block UUID or chunk index with citation metadata.")
+def get_document_part(
+    project_id: str,
+    document_id: str,
+    block_id: str,
+    include_historical: bool = False,
+) -> dict[str, Any]:
+    _material_guard()
+    user_id, _ = _identity()
+    return operations.get_document_part(
+        user_id=user_id,
+        project_id=project_id,
+        document_id=document_id,
+        block_id=block_id,
+        include_historical=include_historical,
+    )
+
+
+@mcp.tool(description="Return a safe outline of an approved document grouped by heading path. Output is read-only and requires human confirmation before use in a plan or Wiki publication.")
+def get_document_structure(
+    project_id: str,
+    document_id: str,
+    include_historical: bool = False,
+    block_limit: int = 200,
+) -> dict[str, Any]:
+    _material_guard()
+    user_id, _ = _identity()
+    return operations.get_document_structure(
+        user_id=user_id,
+        project_id=project_id,
+        document_id=document_id,
+        include_historical=include_historical,
+        block_limit=block_limit,
+    )
+
+
+@mcp.tool(description="Validate document/block citation locators against approved project materials. This tool never writes or publishes Wiki content.")
+def validate_citations(
+    project_id: str,
+    citations: list[dict[str, Any]],
+    include_historical: bool = False,
+) -> dict[str, Any]:
+    _material_guard()
+    user_id, _ = _identity()
+    return operations.validate_citations(
+        user_id=user_id,
+        project_id=project_id,
+        citations=citations,
+        include_historical=include_historical,
+    )
+
+
+@mcp.tool(description="Resolve the latest approved effective version of a logical project document.")
+def get_latest_document(project_id: str, logical_key: str) -> dict[str, Any]:
+    _material_guard()
+    user_id, _ = _identity()
+    return operations.get_latest_document(user_id=user_id, project_id=project_id, logical_key=logical_key)
+
+
+@mcp.tool(description="Compare two approved versions of the same project document family by changed blocks.")
+def compare_document_versions(project_id: str, asset_family_id: str, from_version: int, to_version: int) -> dict[str, Any]:
+    _material_guard()
+    user_id, _ = _identity()
+    return operations.compare_document_versions(user_id=user_id, project_id=project_id, asset_family_id=asset_family_id, from_version=from_version, to_version=to_version)
+
+
+@mcp.tool(description="Compare two approved versions of a document family (task-oriented alias).")
+def compare_versions(project_id: str, asset_family_id: str, from_version: int, to_version: int) -> dict[str, Any]:
+    _material_guard()
+    user_id, _ = _identity()
+    return operations.compare_versions(
+        user_id=user_id,
+        project_id=project_id,
+        asset_family_id=asset_family_id,
+        from_version=from_version,
+        to_version=to_version,
+    )
+
+
+@mcp.tool(description="List approved current project materials updated after an ISO-8601 timestamp.")
+def get_recent_knowledge_updates(project_id: str, since: str, limit: int = 20) -> dict[str, Any]:
+    _material_guard()
+    user_id, _ = _identity()
+    return operations.get_recent_knowledge_updates(user_id=user_id, project_id=project_id, since=since, limit=limit)
+
+
+@mcp.tool(description="Build a cited evidence pack from approved current project materials for plan/decision generation.")
+def build_evidence_pack(project_id: str, query: str, limit: int = 12) -> dict[str, Any]:
+    _material_guard()
+    user_id, _ = _identity()
+    return operations.build_evidence_pack(user_id=user_id, project_id=project_id, query=query, limit=limit)
+
+
+@mcp.tool(description="Create a read-only project plan outline from approved evidence. The draft is never published automatically and requires human confirmation.")
+def draft_project_plan(project_id: str, goal: str, constraints: list[str] | None = None, limit: int = 12) -> dict[str, Any]:
+    _material_guard()
+    user_id, _ = _identity()
+    return operations.draft_project_plan(
+        user_id=user_id, project_id=project_id, goal=goal,
+        constraints=constraints, limit=limit,
+    )
+
+
+@mcp.tool(description="List explicit evidence gaps for a project query. This is a read-only checklist requiring human confirmation.")
+def list_knowledge_gaps(project_id: str, query: str, limit: int = 12) -> dict[str, Any]:
+    _material_guard()
+    user_id, _ = _identity()
+    return operations.list_knowledge_gaps(
+        user_id=user_id, project_id=project_id, query=query, limit=limit,
+    )
+
+
+@mcp.tool(description="Read the durable status of a project-material approval job. This tool never approves or rejects content.")
+def get_approval_job_status(project_id: str, job_id: str | None = None, draft_id: str | None = None) -> dict[str, Any]:
+    _material_guard()
+    user_id, _ = _identity()
+    return operations.get_approval_job_status(user_id=user_id, project_id=project_id, job_id=job_id, draft_id=draft_id)
 @mcp.tool(description="List projects the current token owner can read.")
 def list_wiki_projects() -> dict[str, Any]:
     user_id, _ = _identity()

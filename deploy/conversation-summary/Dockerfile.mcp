@@ -1,0 +1,4 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY --chmod=0644 agentops_local/wiki_mcp/server.py /app/agentops/wiki_mcp/server.py
+COPY --chmod=0644 agentops_local/project_memory/conversations.py /app/agentops/project_memory/conversations.py

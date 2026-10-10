@@ -17,7 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { downloadClaudeCodeInstaller } from '@/utils/claude-code-installer';
-import { CODEX_PLUGIN_BUNDLE_PATH, downloadCodexInstaller } from '@/utils/codex-plugin-installer';
+import { CODEX_PLUGIN_BUNDLE_PATH, CODEX_PLUGIN_VERSION, CODEX_UPDATER_PATH, downloadCodexInstaller, downloadCodexUpdater } from '@/utils/codex-plugin-installer';
 import { mcpEndpointForLocation } from '@/utils/service-endpoints';
 import {
   ApiError,
@@ -226,6 +226,19 @@ export default function ProjectWikiPage() {
     }
   }
 
+  function handleDownloadCodexUpdater() {
+    try {
+      downloadCodexUpdater({
+        endpoint: mcpEndpoint,
+        bundleUrl: new URL(CODEX_PLUGIN_BUNDLE_PATH, window.location.origin).toString(),
+        updaterUrl: new URL(CODEX_UPDATER_PATH, window.location.origin).toString(),
+      });
+      setToast({ msg: '更新器已下载，运行 CMD 后新建 Codex 对话即可加载新版', kind: 'info' });
+    } catch (error: any) {
+      setToast({ msg: error?.message || '生成插件更新器失败', kind: 'error' });
+    }
+  }
+
   function handleDownloadClaudeCodeInstaller() {
     if (!createdMcpToken) {
       setToast({ msg: '请先创建一个 MCP Token', kind: 'error' });
@@ -330,6 +343,7 @@ export default function ProjectWikiPage() {
                 onRevoke={handleRevokeMcpToken}
                 onCopy={copyMcpValue}
                 onInstallCodex={handleDownloadCodexInstaller}
+                onUpdateCodex={handleDownloadCodexUpdater}
                 onInstallClaudeCode={handleDownloadClaudeCodeInstaller}
               />
 
@@ -475,6 +489,7 @@ function McpAccessPanel({
   onRevoke,
   onCopy,
   onInstallCodex,
+  onUpdateCodex,
   onInstallClaudeCode,
 }: {
   endpoint: string;
@@ -492,6 +507,7 @@ function McpAccessPanel({
   onRevoke: (tokenId: string) => void;
   onCopy: (value: string) => void;
   onInstallCodex: () => void;
+  onUpdateCodex: () => void;
   onInstallClaudeCode: () => void;
 }) {
   return (
@@ -595,11 +611,17 @@ function McpAccessPanel({
         <div className="rounded-lg border border-[#d7e0ec] bg-white p-4">
           <div className="flex items-center gap-2 text-sm font-semibold text-[#253655]">
             <Download size={17} className="text-brand-600" aria-hidden="true" />
-            Codex CLI
+            Company Memory · Codex
           </div>
           <p className="mt-2 text-xs leading-5 text-[#6e7d97]">
             自动保存当前 Token、安装完整 Company Memory 插件，并配置智慧大脑 MCP。
           </p>
+          <p className="mt-2 text-xs leading-5 text-[#253655]">最新版本：{CODEX_PLUGIN_VERSION} · 仅提交简短请求和最终结果摘要，不含思考过程或工具日志。</p>
+          <Button type="button" variant="secondary" className="mt-3 w-full" aria-label="更新 Company Memory" onClick={onUpdateCodex}>
+            <RefreshCw size={16} aria-hidden="true" />
+            更新 Company Memory
+          </Button>
+          <p className="mt-2 text-xs leading-5 text-[#6e7d97]">已安装用户直接更新，保留现有 Token。更新器会核对安装版本；完成后新建 Codex 对话加载新版技能。</p>
           <Button
             type="button"
             className="mt-3 w-full"
