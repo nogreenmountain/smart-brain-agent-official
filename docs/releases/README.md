@@ -8,6 +8,7 @@
 
 | 发布编号 | 关联任务 | 环境与范围 | 实际终态 | 现场核对时间 | 记录 |
 |---|---|---|---|---|---|
+| personal-api-incremental-records-20261010-r1 | personal-api-incremental-records-20261010 | 个人代理使用记录增量化单文件叠加发布 | 成功；promote/公网/容器内合成端到端/发布后有机流量形状验收及归档复核通过，1032无关容器代际保持，backup 20 | 2026-10-10 20:01–20:07 | [实际记录](personal-api-incremental-records-20261010-r1.md) |
 | agents-template-release-20261010-r1 | agents-template-reinitialize-20261010／management-workspace-layout-20261010 | 主API新增4条agents模板路由／主前端重新初始化面板与紧凑布局 | 成功；promote/公网/终态/归档通过，1023无关容器代际保持，backup 20 | 2026-10-10 17:15–17:16 | [实际记录](agents-template-release-20261010-r1.md) |
 | personal-proxy-concurrency-20261009-r2 | personal-proxy-concurrency-20261009 | 个人代理三源短事务/有界队列；同一current unit与writer补充清单 | r1实际恢复、r2成功；34项实际镜像/HTTP+PG及生产只读权限通过，归档独立复核完成 | 2026-10-09 12:17 | [r2实际记录](personal-proxy-concurrency-20261009-r2.md)／[r1失败恢复](personal-proxy-concurrency-20261009-r1.md) |
 | full-system-acceptance-fixes-20261008-r1 | full-system-acceptance-20261008 | 主API资料共享volume/MCP摘要过滤及旧资料读取 | r1实际恢复、r2和第二MCP发布成功；业务22/资料18复验通过，全系统未闭环 | 2026-10-09 09:31/09:36 | [实际记录](full-system-acceptance-fixes-20261008-r1.md) |
