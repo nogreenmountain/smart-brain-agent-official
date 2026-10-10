@@ -254,6 +254,33 @@ def response_messages(payload: dict[str, Any]) -> list[GatewayConversationMessag
     return messages
 
 
+def _incremental_request_tail(
+    messages: list[GatewayConversationMessage],
+) -> list[GatewayConversationMessage]:
+    """Keep only the request turns not already persisted by earlier records.
+
+    Stateless OpenAI-compatible clients resend the whole visible conversation
+    on every call so the model keeps its context. Everything up to and
+    including the last assistant message was already stored by previous
+    records; storing it again would duplicate the entire history into each
+    new record (quadratic growth, multi-MB payloads). A first turn has no
+    assistant history and is kept in full.
+    """
+    last_assistant = -1
+    for index, message in enumerate(messages):
+        if message.role == "assistant":
+            last_assistant = index
+    tail = messages[last_assistant + 1:] if last_assistant >= 0 else messages
+    if tail:
+        return tail
+    # A request whose visible history ends with an assistant message carries
+    # no new user turn; keep the latest user prompt so the record is not empty.
+    for message in reversed(messages):
+        if message.role == "user":
+            return [message]
+    return messages
+
+
 def decode_payload(content: bytes, content_type: str) -> dict[str, Any]:
     if "text/event-stream" in content_type:
         found = extract_usage_from_sse(content.decode("utf-8", errors="replace"))
@@ -280,7 +307,7 @@ def event_for_response(
     usage = response_payload.get("usage") if isinstance(response_payload.get("usage"), dict) else {}
     if not usage and isinstance(response_payload.get("response"), dict):
         usage = response_payload["response"].get("usage") or {}
-    messages = request_messages(request_payload) + response_messages(response_payload)
+    messages = _incremental_request_tail(request_messages(request_payload)) + response_messages(response_payload)
     if not messages:
         messages = [GatewayConversationMessage(role="assistant", content="个人 API 请求已完成，但上游未返回可记录的正文。")]
     # The client request ID is only a transport hint.  It must not become the

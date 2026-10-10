@@ -127,3 +127,108 @@ def test_internal_response_roles_are_not_projected_to_work_record() -> None:
         ("assistant", "visible answer"),
         ("assistant", "visible output"),
     ]
+def _chat_event(messages, response_text, *, status_code=200):
+    return event_for_response(
+        body=json.dumps({
+            "model": "gpt-6-astra",
+            "choices": [{"message": {"role": "assistant", "content": response_text}}],
+            "usage": {"input_tokens": 3, "output_tokens": 2, "total_tokens": 5},
+        }).encode(),
+        request_payload={"model": "gpt-6-astra", "messages": messages},
+        response_content_type="application/json",
+        status_code=status_code,
+        started_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+        latency_ms=5,
+    )
+
+
+def test_event_records_only_this_turn_from_chat_history() -> None:
+    event = _chat_event([
+        {"role": "user", "content": "question 1"},
+        {"role": "assistant", "content": "answer 1"},
+        {"role": "user", "content": "question 2"},
+    ], "answer 2")
+    assert [(item.role, item.content) for item in event.messages] == [
+        ("user", "question 2"),
+        ("assistant", "answer 2"),
+    ]
+
+
+def test_event_records_first_turn_in_full() -> None:
+    event = _chat_event([{"role": "user", "content": "question 1"}], "answer 1")
+    assert [(item.role, item.content) for item in event.messages] == [
+        ("user", "question 1"),
+        ("assistant", "answer 1"),
+    ]
+
+
+def test_event_records_multi_turn_tail_only() -> None:
+    event = _chat_event([
+        {"role": "user", "content": "question 1"},
+        {"role": "assistant", "content": "answer 1"},
+        {"role": "user", "content": "question 2"},
+        {"role": "assistant", "content": "answer 2"},
+        {"role": "user", "content": "question 3"},
+    ], "answer 3")
+    assert [(item.role, item.content) for item in event.messages] == [
+        ("user", "question 3"),
+        ("assistant", "answer 3"),
+    ]
+
+
+def test_event_records_responses_input_incremental_tail() -> None:
+    event = event_for_response(
+        body=json.dumps({
+            "model": "gpt-6-astra",
+            "output_text": "answer 2",
+            "usage": {"input_tokens": 3, "output_tokens": 2, "total_tokens": 5},
+        }).encode(),
+        request_payload={"model": "gpt-6-astra", "input": [
+            {"role": "user", "content": "question 1"},
+            {"role": "assistant", "content": "answer 1"},
+            {"role": "user", "content": "question 2"},
+        ]},
+        response_content_type="application/json",
+        status_code=200,
+        started_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+        latency_ms=5,
+    )
+    assert [(item.role, item.content) for item in event.messages] == [
+        ("user", "question 2"),
+        ("assistant", "answer 2"),
+    ]
+
+
+def test_event_tail_fallback_when_history_ends_with_assistant() -> None:
+    event = _chat_event([
+        {"role": "user", "content": "question 1"},
+        {"role": "assistant", "content": "answer 1"},
+    ], "answer 2")
+    assert [(item.role, item.content) for item in event.messages] == [
+        ("user", "question 1"),
+        ("assistant", "answer 2"),
+    ]
+
+
+def test_event_incremental_tail_keeps_internal_roles_filtered() -> None:
+    event = _chat_event([
+        {"role": "system", "content": "private agent instructions"},
+        {"role": "user", "content": "question 1"},
+        {"role": "assistant", "content": "answer 1"},
+        {"role": "tool", "content": "private tool output"},
+        {"role": "user", "content": "question 2"},
+    ], "answer 2")
+    assert [(item.role, item.content) for item in event.messages] == [
+        ("user", "question 2"),
+        ("assistant", "answer 2"),
+    ]
+
+
+def test_error_response_keeps_only_incremental_prompt() -> None:
+    event = _chat_event([
+        {"role": "user", "content": "question 1"},
+        {"role": "assistant", "content": "answer 1"},
+        {"role": "user", "content": "question 2"},
+    ], "", status_code=400)
+    assert event.status_code == 400
+    assert [(item.role, item.content) for item in event.messages] == [("user", "question 2")]
