@@ -21,7 +21,7 @@ from agentops.rag.authz import AuthzError, current_user_id, is_system_admin, req
 
 
 AGENTS_FILENAME = "AGENTS.md"
-AGENTS_TEMPLATE_VERSION = 1
+AGENTS_TEMPLATE_VERSION = 4
 # Keep the upload limit compatible with the first production AGENTS schema;
 # larger templates can be introduced later with an explicit migration.
 AGENTS_MAX_BYTES = 64 * 1024
@@ -48,6 +48,40 @@ class AgentsResponse(BaseModel):
     sha256: str
     updated_by: uuid.UUID | None = None
     updated_at: datetime | None = None
+
+
+class AgentsTemplatePreviewResponse(BaseModel):
+    project_id: uuid.UUID
+    current_version: int | None
+    current_sha256: str | None
+    current_updated_by: uuid.UUID | None
+    current_updated_at: datetime | None
+    template_version: int
+    template_sha256: str
+    identical: bool
+
+
+class AgentsResetRequest(BaseModel):
+    expected_version: int | None = Field(default=None, ge=1)
+    expected_sha256: str | None = Field(default=None, min_length=64, max_length=64)
+    template_sha256: str = Field(min_length=64, max_length=64)
+
+
+class AgentsResetResponse(BaseModel):
+    status: str
+    agents: AgentsResponse
+
+
+class AgentsVersionSummary(BaseModel):
+    version: int
+    sha256: str
+    updated_by: uuid.UUID | None
+    created_at: datetime
+
+
+class AgentsVersionsResponse(BaseModel):
+    project_id: uuid.UUID
+    versions: list[AgentsVersionSummary]
 
 
 class WikiUploadStatsMember(BaseModel):
@@ -88,14 +122,10 @@ def build_default_agents(*, project_id: uuid.UUID, project_name: str) -> str:
         f"# {safe_name} 项目协作规则\n\n"
         f"<!-- smartbrain-project-id: {project_id} -->\n"
         f"<!-- smartbrain-agents-version: {AGENTS_TEMPLATE_VERSION} -->\n"
-        "<!-- smartbrain-agents-sha256: generated-on-save -->\n\n"
-        "让 AI 理解项目规则，与智慧大脑高效协作。\n\n"
-        f"每条对话完成后，请使用 company memory 插件，将以下对话直接记录到「{safe_name}」项目的知识库“对话记录”中，并明确标注：\n\n"
-        "- 上传成员名称\n"
-        "- 上传时间\n"
-        "- 使用模型\n"
-        "- SmartBrain request_id\n"
-        "- 本次任务完成内容\n"
+        "\n"
+        "- 只处理本项目；先了解现有代码和约定，改动后验证结果。\n"
+        f"- 通过 company-memory 查阅项目知识；任务完成后遵循插件规则，调用 record_project_conversation 仅保存简短 user/assistant 对话记录（用户请求与最终结果摘要），project_id=\"{project_id}\"。\n"
+        "- 不读取或上传思考/推理过程、进度更新、工具日志、内部指令、配置、密钥、个人信息或其他成员对话；用户要求时停止记录或缩小范围。提交后核对回执，失败如实说明。\n"
     )
 
 
@@ -159,6 +189,109 @@ def initialize_agents(orm: Session, *, project_id: uuid.UUID, project_name: str,
     return row
 
 
+def build_agents_template_preview(
+    orm: Session,
+    *,
+    project_id: uuid.UUID,
+    project_name: str,
+) -> AgentsTemplatePreviewResponse:
+    template = build_default_agents(project_id=project_id, project_name=project_name)
+    digest = sha256_text(template)
+    row = _agents_row(orm, project_id)
+    return AgentsTemplatePreviewResponse(
+        project_id=project_id,
+        current_version=int(row.version) if row else None,
+        current_sha256=str(row.sha256) if row else None,
+        current_updated_by=uuid.UUID(str(row.updated_by)) if row and row.updated_by else None,
+        current_updated_at=row.updated_at if row else None,
+        template_version=AGENTS_TEMPLATE_VERSION,
+        template_sha256=digest,
+        identical=bool(row) and hmac.compare_digest(str(row.sha256), digest),
+    )
+
+
+def reset_agents_to_template(
+    orm: Session,
+    *,
+    project_id: uuid.UUID,
+    project_name: str,
+    user_id: uuid.UUID,
+    expected_version: int | None,
+    expected_sha256: str | None,
+    template_sha256: str,
+):
+    """Replace a project's AGENTS.md with the current template under CAS.
+
+    Returns ``(status, row)`` with status ``created``/``replaced``/``unchanged``.
+    The shared :func:`initialize_agents` keeps its fill-missing-only semantics
+    because GET, download, project-context issue, and project creation rely on
+    it never overwriting an existing file.
+    """
+    content = build_default_agents(project_id=project_id, project_name=project_name)
+    digest = sha256_text(content)
+    if not hmac.compare_digest(template_sha256.strip().lower(), digest):
+        raise HTTPException(status_code=409, detail="模板已更新，请重新预览")
+    current = orm.execute(
+        text("SELECT version, sha256 FROM public.project_agents_files WHERE project_id=:pid FOR UPDATE"),
+        {"pid": str(project_id)},
+    ).first()
+    if current is None:
+        # Serialize the rare first-write race on the parent project row.
+        orm.execute(
+            text("SELECT id FROM public.projects WHERE id=:pid FOR UPDATE"),
+            {"pid": str(project_id)},
+        ).first()
+        current = orm.execute(
+            text("SELECT version, sha256 FROM public.project_agents_files WHERE project_id=:pid FOR UPDATE"),
+            {"pid": str(project_id)},
+        ).first()
+    current_version = int(current.version) if current else None
+    current_sha256 = str(current.sha256) if current else None
+    conflict = HTTPException(status_code=409, detail="AGENTS.md 已被其他人修改，请重新预览后再确认")
+    if current_version != expected_version:
+        raise conflict
+    if expected_sha256 is None:
+        if current_sha256 is not None:
+            raise conflict
+    elif current_sha256 is None or not hmac.compare_digest(expected_sha256.strip().lower(), current_sha256):
+        raise conflict
+    if current_sha256 is not None and hmac.compare_digest(current_sha256, digest):
+        return "unchanged", _agents_row(orm, project_id)
+    if current is None:
+        # Match initialize_agents: a fresh file starts at the template version.
+        version = AGENTS_TEMPLATE_VERSION
+        status = "created"
+    else:
+        history = orm.execute(
+            text("SELECT max(version) AS version FROM public.project_agents_file_versions WHERE project_id=:pid"),
+            {"pid": str(project_id)},
+        ).first()
+        history_max = int(history.version) if history and history.version is not None else 0
+        version = max(current_version, history_max) + 1
+        status = "replaced"
+    orm.execute(text("""
+        INSERT INTO public.project_agents_file_versions
+            (project_id, filename, content, version, sha256, updated_by)
+        VALUES (:pid, :filename, :content, :version, :sha256, :updated_by)
+    """), {
+        "pid": str(project_id), "filename": AGENTS_FILENAME, "content": content,
+        "version": version, "sha256": digest, "updated_by": str(user_id) if user_id else None,
+    })
+    orm.execute(text("""
+        INSERT INTO public.project_agents_files
+            (project_id, filename, content, version, sha256, updated_by)
+        VALUES (:pid, :filename, :content, :version, :sha256, :updated_by)
+        ON CONFLICT (project_id) DO UPDATE SET
+            filename=EXCLUDED.filename, content=EXCLUDED.content,
+            version=EXCLUDED.version, sha256=EXCLUDED.sha256,
+            updated_by=EXCLUDED.updated_by, updated_at=now()
+    """), {
+        "pid": str(project_id), "filename": AGENTS_FILENAME, "content": content,
+        "version": version, "sha256": digest, "updated_by": str(user_id) if user_id else None,
+    })
+    return status, _agents_row(orm, project_id)
+
+
 def _require_member_or_http(orm: Session, *, user_id: uuid.UUID, project_id: uuid.UUID):
     try:
         return require_member(orm, user_id=user_id, project_id=project_id)
@@ -193,6 +326,44 @@ def initialize_agents_endpoint(project_id: uuid.UUID, request: Request, orm: Ses
     row = initialize_agents(orm, project_id=project_id, project_name=str(project.name), user_id=user_id)
     orm.commit()
     return _agents_response(row)
+
+
+@router.get("/projects/{project_id}/agents/template-preview", response_model=AgentsTemplatePreviewResponse)
+def preview_agents_template(
+    project_id: uuid.UUID,
+    request: Request,
+    response: Response,
+    orm: Session = Depends(get_orm_session),
+):
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    user_id = _user_id(request)
+    _require_admin_or_http(orm, user_id=user_id, project_id=project_id)
+    project = _project(orm, project_id)
+    return build_agents_template_preview(orm, project_id=project_id, project_name=str(project.name))
+
+
+@router.post("/projects/{project_id}/agents/reset-to-template", response_model=AgentsResetResponse)
+def reset_agents_to_template_endpoint(
+    project_id: uuid.UUID,
+    request: Request,
+    body: AgentsResetRequest,
+    orm: Session = Depends(get_orm_session),
+):
+    user_id = _user_id(request)
+    _require_admin_or_http(orm, user_id=user_id, project_id=project_id)
+    project = _project(orm, project_id)
+    status, row = reset_agents_to_template(
+        orm,
+        project_id=project_id,
+        project_name=str(project.name),
+        user_id=user_id,
+        expected_version=body.expected_version,
+        expected_sha256=body.expected_sha256,
+        template_sha256=body.template_sha256,
+    )
+    orm.commit()
+    return AgentsResetResponse(status=status, agents=_agents_response(row))
 
 
 @router.post("/projects/{project_id}/agents/upload", response_model=AgentsResponse)
@@ -256,6 +427,49 @@ def download_agents(project_id: uuid.UUID, request: Request, orm: Session = Depe
         content=str(row.content).encode("utf-8"),
         media_type="text/markdown; charset=utf-8",
         headers=download_response_headers(),
+    )
+
+
+@router.get("/projects/{project_id}/agents/versions", response_model=AgentsVersionsResponse)
+def list_agents_versions(project_id: uuid.UUID, request: Request, orm: Session = Depends(get_orm_session)):
+    user_id = _user_id(request)
+    _require_member_or_http(orm, user_id=user_id, project_id=project_id)
+    rows = orm.execute(text("""
+        SELECT version, sha256, updated_by::text AS updated_by, created_at
+        FROM public.project_agents_file_versions
+        WHERE project_id=:pid
+        ORDER BY version DESC
+    """), {"pid": str(project_id)}).all()
+    return AgentsVersionsResponse(
+        project_id=project_id,
+        versions=[AgentsVersionSummary(
+            version=int(row.version),
+            sha256=str(row.sha256),
+            updated_by=uuid.UUID(str(row.updated_by)) if row.updated_by else None,
+            created_at=row.created_at,
+        ) for row in rows],
+    )
+
+
+@router.get("/projects/{project_id}/agents/versions/{version}/download")
+def download_agents_version(
+    project_id: uuid.UUID,
+    version: int,
+    request: Request,
+    orm: Session = Depends(get_orm_session),
+):
+    user_id = _user_id(request)
+    _require_member_or_http(orm, user_id=user_id, project_id=project_id)
+    row = orm.execute(text("""
+        SELECT content FROM public.project_agents_file_versions
+        WHERE project_id=:pid AND version=:version
+    """), {"pid": str(project_id), "version": version}).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="AGENTS.md 版本不存在")
+    return Response(
+        content=str(row.content).encode("utf-8"),
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="AGENTS-v{version}.md"'},
     )
 
 
@@ -378,7 +592,8 @@ def resolve_gateway_project_context(
     return uuid.UUID(str(row.project_id))
 
 
-@router.get("/projects/{project_id}/wiki-upload-stats", response_model=WikiUploadStatsResponse)
+@router.get("/projects/{project_id}/conversation-upload-stats", response_model=WikiUploadStatsResponse)
+@router.get("/projects/{project_id}/wiki-upload-stats", response_model=WikiUploadStatsResponse, include_in_schema=False)
 def wiki_upload_stats(project_id: uuid.UUID, request: Request, orm: Session = Depends(get_orm_session)):
     user_id = _user_id(request)
     _require_member_or_http(orm, user_id=user_id, project_id=project_id)
@@ -389,7 +604,7 @@ def wiki_upload_stats(project_id: uuid.UUID, request: Request, orm: Session = De
         FROM public.project_conversation_records r
         JOIN auth.users au ON au.id=r.user_id
         LEFT JOIN public.users u ON u.id=r.user_id
-        WHERE r.project_id=:pid AND r.wiki_status='published'
+        WHERE r.project_id=:pid
         GROUP BY r.user_id, u.full_name, au.email
         ORDER BY count(*) DESC, display_name
     """), {"pid": str(project_id)}).all()

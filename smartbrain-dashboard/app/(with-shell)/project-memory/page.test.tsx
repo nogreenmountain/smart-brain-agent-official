@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -205,14 +205,15 @@ describe('ProjectMemoryPage compatibility route', () => {
     const user = userEvent.setup();
     render(<ProjectMemoryPage />);
 
-    await screen.findByRole('heading', { name: '创建项目' });
-    expect(screen.getByLabelText('项目第一分级')).toHaveValue('research');
-    expect(screen.getByLabelText('项目第二分级')).toHaveValue('research-direct');
-    expect(screen.getAllByRole('option', { name: '直属分级' }).length).toBeGreaterThan(0);
+    await user.click(await screen.findByRole('button', { name: '创建项目' }));
+    const dialog = screen.getByRole('dialog', { name: '创建项目' });
+    expect(within(dialog).getByLabelText('项目第一分级')).toHaveValue('research');
+    expect(within(dialog).getByLabelText('项目第二分级')).toHaveValue('research-direct');
+    expect(within(dialog).getAllByRole('option', { name: '直属分级' }).length).toBeGreaterThan(0);
     expect(screen.queryByText('所属组织')).not.toBeInTheDocument();
 
-    await user.type(screen.getByLabelText('新项目名称'), '新研发项目');
-    await user.click(screen.getByRole('button', { name: '创建项目' }));
+    await user.type(within(dialog).getByLabelText('新项目名称'), '新研发项目');
+    await user.click(within(dialog).getByRole('button', { name: '创建项目' }));
 
     await waitFor(() => expect(mocks.createProject).toHaveBeenCalledWith({
       org_id: 'org-1',

@@ -3,6 +3,7 @@ import importlib.util
 import sys
 import types
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi.routing import APIRoute
@@ -40,6 +41,10 @@ def _load_module():
     spec = importlib.util.spec_from_file_location("project_agents_under_test", path)
     module = importlib.util.module_from_spec(spec)
     assert spec and spec.loader
+    # Keep the module importable under its spec name so pydantic can resolve
+    # deferred annotations (``from __future__ import annotations``) via
+    # ``sys.modules[cls.__module__]`` when models are first instantiated.
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     for name, old in previous.items():
         if old is None:
@@ -64,16 +69,42 @@ def test_default_agents_template_replaces_project_name_and_contains_memory_workf
 
     assert "# 材料研发 项目协作规则" in content
     assert f"smartbrain-project-id: {project_id}" in content
-    assert "company memory" in content
+    assert "company-memory" in content
     assert "对话记录" in content
-    assert "上传成员名称" in content
+    assert "user/assistant" in content
     assert f"smartbrain-agents-version: {AGENTS_TEMPLATE_VERSION}" in content
+
+
+def test_default_agents_is_short_and_keeps_only_the_essential_project_contract():
+    content = build_default_agents(project_id=uuid.uuid4(), project_name="材料研发")
+    assert len(content.encode("utf-8")) <= 1200
+    assert len(content.splitlines()) <= 12
+    assert sum(line.startswith("- ") for line in content.splitlines()) <= 3
+    assert "user/assistant" in content
+    assert "密钥" in content and "个人信息" in content
+    assert "停止记录" in content
+    assert "验证" in content
+    assert "失败" in content
 
 
 def test_agents_filename_is_strictly_case_sensitive():
     assert validate_agents_filename(AGENTS_FILENAME) is True
     for name in ("agents.md", "AGENTS.MD", "foo/AGENTS.md", "AGENTS.md.bak", None, ""):
         assert validate_agents_filename(name) is False
+
+
+def test_default_agents_uses_explicit_project_and_delegates_protocol_to_plugin():
+    pid = uuid.uuid4()
+    content = build_default_agents(project_id=pid, project_name='测试项目')
+    assert 'record_project_conversation' in content
+    assert f'project_id="{pid}"' in content
+    assert '遵循插件规则' in content
+    assert '回执' in content
+    skill = (Path(__file__).parents[2] / 'plugins/company-memory/skills/company-memory/SKILL.md').read_text(encoding='utf-8')
+    for detail in ('submission_id', 'unknown', 'published'):
+        assert detail in skill
+    assert 'SmartBrain request_id' not in content
+    assert '适配器' not in content
 
 
 def test_sha256_text_matches_standard_digest():
@@ -147,3 +178,242 @@ def test_context_validation_requires_matching_key_and_agents_digest(monkeypatch)
             _FakeOrm([None]), user_id=user_id, key_id=key_id, token=token
         )
     assert exc.value.status_code == 428
+
+
+class _StatefulResult:
+    def __init__(self, rows):
+        self._rows = list(rows)
+
+    def first(self):
+        return self._rows[0] if self._rows else None
+
+    def all(self):
+        return list(self._rows)
+
+
+def _agents_file_row(project_id, *, content, version, updated_by=None):
+    return types.SimpleNamespace(
+        project_id=str(project_id), filename="AGENTS.md", content=content,
+        version=version, sha256=sha256_text(content),
+        updated_by=str(updated_by) if updated_by else None,
+        updated_at=datetime(2026, 10, 9, tzinfo=timezone.utc),
+    )
+
+
+def _template_digest(project_id, project_name="材料研发"):
+    return sha256_text(build_default_agents(project_id=project_id, project_name=project_name))
+
+
+class _TemplateSession:
+    """Stateful fake covering exactly the SQL used by the template reset flow."""
+
+    def __init__(self, *, project_id, project_name="材料研发", agents=None, versions=None):
+        self.project = types.SimpleNamespace(id=str(project_id), name=project_name)
+        self.agents = agents
+        self.versions = list(versions or [])
+        self.statements = []
+        self.committed = False
+
+    def commit(self):
+        self.committed = True
+
+    def execute(self, statement, params=None):
+        sql = " ".join(str(statement).split())
+        params = params or {}
+        self.statements.append(sql)
+        if sql.startswith("SELECT project_id::text AS project_id, filename, content, version,"):
+            return _StatefulResult([self.agents] if self.agents else [])
+        if sql.startswith("SELECT version, sha256 FROM public.project_agents_files") and "FOR UPDATE" in sql:
+            return _StatefulResult([self.agents] if self.agents else [])
+        if sql.startswith("SELECT id FROM public.projects WHERE id=:pid FOR UPDATE"):
+            return _StatefulResult([self.project])
+        if sql.startswith("SELECT id::text AS id, name FROM public.projects"):
+            return _StatefulResult([self.project])
+        if sql.startswith("SELECT max(version) AS version FROM public.project_agents_file_versions"):
+            latest = max((int(item.version) for item in self.versions), default=None)
+            return _StatefulResult([types.SimpleNamespace(version=latest)])
+        if sql.startswith("INSERT INTO public.project_agents_file_versions"):
+            self.versions.append(types.SimpleNamespace(
+                project_id=params["pid"], filename=params["filename"], content=params["content"],
+                version=params["version"], sha256=params["sha256"], updated_by=params["updated_by"],
+                created_at=datetime.now(timezone.utc),
+            ))
+            return _StatefulResult([])
+        if sql.startswith("INSERT INTO public.project_agents_files"):
+            self.agents = types.SimpleNamespace(
+                project_id=params["pid"], filename=params["filename"], content=params["content"],
+                version=params["version"], sha256=params["sha256"], updated_by=params["updated_by"],
+                updated_at=datetime.now(timezone.utc),
+            )
+            return _StatefulResult([])
+        if sql.startswith("SELECT version, sha256, updated_by::text AS updated_by, created_at"):
+            return _StatefulResult(sorted(self.versions, key=lambda item: item.version, reverse=True))
+        if sql.startswith("SELECT content FROM public.project_agents_file_versions"):
+            return _StatefulResult([item for item in self.versions if int(item.version) == int(params["version"])])
+        raise AssertionError(f"unexpected SQL: {sql}")
+
+
+def test_template_preview_without_current_file():
+    pid = uuid.uuid4()
+    session = _TemplateSession(project_id=pid)
+    preview = project_agents.build_agents_template_preview(session, project_id=pid, project_name="材料研发")
+    assert preview.current_version is None
+    assert preview.current_sha256 is None
+    assert preview.current_updated_by is None
+    assert preview.template_version == AGENTS_TEMPLATE_VERSION
+    assert preview.template_sha256 == _template_digest(pid)
+    assert preview.identical is False
+
+
+def test_template_preview_detects_identical_current_file():
+    pid = uuid.uuid4()
+    row = _agents_file_row(pid, content=build_default_agents(project_id=pid, project_name="材料研发"), version=AGENTS_TEMPLATE_VERSION)
+    session = _TemplateSession(project_id=pid, agents=row)
+    preview = project_agents.build_agents_template_preview(session, project_id=pid, project_name="材料研发")
+    assert preview.identical is True
+    assert preview.current_version == AGENTS_TEMPLATE_VERSION
+    assert preview.current_sha256 == _template_digest(pid)
+
+
+def test_reset_creates_file_for_project_without_agents():
+    pid = uuid.uuid4()
+    user_id = uuid.uuid4()
+    session = _TemplateSession(project_id=pid)
+    status, row = project_agents.reset_agents_to_template(
+        session, project_id=pid, project_name="材料研发", user_id=user_id,
+        expected_version=None, expected_sha256=None, template_sha256=_template_digest(pid),
+    )
+    assert status == "created"
+    assert int(row.version) == AGENTS_TEMPLATE_VERSION
+    assert str(row.sha256) == _template_digest(pid)
+    assert str(row.updated_by) == str(user_id)
+    assert [item.version for item in session.versions] == [AGENTS_TEMPLATE_VERSION]
+
+
+def test_reset_replaces_existing_file_and_archives_new_version():
+    pid = uuid.uuid4()
+    stale = _agents_file_row(pid, content="# 旧规则\n", version=3)
+    session = _TemplateSession(project_id=pid, agents=stale)
+    status, row = project_agents.reset_agents_to_template(
+        session, project_id=pid, project_name="材料研发", user_id=uuid.uuid4(),
+        expected_version=3, expected_sha256=stale.sha256, template_sha256=_template_digest(pid),
+    )
+    assert status == "replaced"
+    assert int(row.version) == 4
+    assert str(row.sha256) == _template_digest(pid)
+    assert [item.version for item in session.versions] == [4]
+    assert session.agents.version == 4
+    assert session.agents.sha256 == _template_digest(pid)
+
+
+def test_reset_new_version_goes_past_history_maximum():
+    pid = uuid.uuid4()
+    stale = _agents_file_row(pid, content="# 旧规则\n", version=4)
+    session = _TemplateSession(project_id=pid, agents=stale, versions=[types.SimpleNamespace(version=7)])
+    status, row = project_agents.reset_agents_to_template(
+        session, project_id=pid, project_name="材料研发", user_id=uuid.uuid4(),
+        expected_version=4, expected_sha256=stale.sha256, template_sha256=_template_digest(pid),
+    )
+    assert status == "replaced"
+    assert int(row.version) == 8
+    assert [item.version for item in session.versions] == [7, 8]
+
+
+def test_reset_unchanged_keeps_version_and_history_untouched():
+    pid = uuid.uuid4()
+    current = _agents_file_row(pid, content=build_default_agents(project_id=pid, project_name="材料研发"), version=AGENTS_TEMPLATE_VERSION)
+    session = _TemplateSession(project_id=pid, agents=current)
+    status, row = project_agents.reset_agents_to_template(
+        session, project_id=pid, project_name="材料研发", user_id=uuid.uuid4(),
+        expected_version=AGENTS_TEMPLATE_VERSION, expected_sha256=current.sha256,
+        template_sha256=_template_digest(pid),
+    )
+    assert status == "unchanged"
+    assert int(row.version) == AGENTS_TEMPLATE_VERSION
+    assert session.versions == []
+    assert not any(sql.startswith("INSERT INTO") for sql in session.statements)
+
+
+def test_reset_rejects_conflicting_expected_state():
+    pid = uuid.uuid4()
+    current = _agents_file_row(pid, content="# 旧规则\n", version=3)
+    digest = _template_digest(pid)
+    session = _TemplateSession(project_id=pid, agents=current)
+    with pytest.raises(HTTPException) as exc:
+        project_agents.reset_agents_to_template(
+            session, project_id=pid, project_name="材料研发", user_id=uuid.uuid4(),
+            expected_version=2, expected_sha256=current.sha256, template_sha256=digest,
+        )
+    assert exc.value.status_code == 409
+    with pytest.raises(HTTPException) as exc:
+        project_agents.reset_agents_to_template(
+            session, project_id=pid, project_name="材料研发", user_id=uuid.uuid4(),
+            expected_version=3, expected_sha256="0" * 64, template_sha256=digest,
+        )
+    assert exc.value.status_code == 409
+    with pytest.raises(HTTPException) as exc:
+        project_agents.reset_agents_to_template(
+            session, project_id=pid, project_name="材料研发", user_id=uuid.uuid4(),
+            expected_version=None, expected_sha256=None, template_sha256=digest,
+        )
+    assert exc.value.status_code == 409
+    assert session.versions == []
+    assert session.agents.version == 3
+
+
+def test_reset_rejects_expected_state_when_file_missing():
+    pid = uuid.uuid4()
+    session = _TemplateSession(project_id=pid)
+    with pytest.raises(HTTPException) as exc:
+        project_agents.reset_agents_to_template(
+            session, project_id=pid, project_name="材料研发", user_id=uuid.uuid4(),
+            expected_version=1, expected_sha256="a" * 64, template_sha256=_template_digest(pid),
+        )
+    assert exc.value.status_code == 409
+    assert session.agents is None
+    assert session.versions == []
+
+
+def test_reset_rejects_stale_template_digest_without_writing():
+    pid = uuid.uuid4()
+    session = _TemplateSession(project_id=pid)
+    with pytest.raises(HTTPException) as exc:
+        project_agents.reset_agents_to_template(
+            session, project_id=pid, project_name="材料研发", user_id=uuid.uuid4(),
+            expected_version=None, expected_sha256=None, template_sha256="0" * 64,
+        )
+    assert exc.value.status_code == 409
+    assert session.statements == []
+    assert session.agents is None
+
+
+def test_reset_endpoint_commits_and_reports_created_status():
+    pid = uuid.uuid4()
+    session = _TemplateSession(project_id=pid)
+    body = project_agents.AgentsResetRequest(
+        expected_version=None, expected_sha256=None, template_sha256=_template_digest(pid),
+    )
+    result = project_agents.reset_agents_to_template_endpoint(pid, None, body, session)
+    assert result.status == "created"
+    assert result.agents.version == AGENTS_TEMPLATE_VERSION
+    assert result.agents.sha256 == _template_digest(pid)
+    assert session.committed is True
+
+
+def test_versions_list_is_latest_first_and_download_returns_stored_content():
+    pid = uuid.uuid4()
+    versions = [
+        _agents_file_row(pid, content="old", version=4),
+        _agents_file_row(pid, content="new", version=5),
+    ]
+    for item, created in zip(versions, (datetime(2026, 10, 9, tzinfo=timezone.utc), datetime(2026, 10, 10, tzinfo=timezone.utc))):
+        item.created_at = created
+    session = _TemplateSession(project_id=pid, versions=versions)
+    listing = project_agents.list_agents_versions(pid, None, session)
+    assert [item.version for item in listing.versions] == [5, 4]
+    response = project_agents.download_agents_version(pid, 4, None, session)
+    assert response.body == "old".encode("utf-8")
+    assert response.headers["Content-Disposition"] == 'attachment; filename="AGENTS-v4.md"'
+    with pytest.raises(HTTPException) as exc:
+        project_agents.download_agents_version(pid, 99, None, session)
+    assert exc.value.status_code == 404

@@ -55,6 +55,29 @@ export interface ProjectAgentsFile {
   updated_at?: string | null;
 }
 
+export interface ProjectAgentsTemplatePreview {
+  project_id: string;
+  current_version: number | null;
+  current_sha256: string | null;
+  current_updated_by: string | null;
+  current_updated_at: string | null;
+  template_version: number;
+  template_sha256: string;
+  identical: boolean;
+}
+
+export interface ProjectAgentsResetResult {
+  status: 'created' | 'replaced' | 'unchanged';
+  agents: ProjectAgentsFile;
+}
+
+export interface ProjectAgentsVersionSummary {
+  version: number;
+  sha256: string;
+  updated_by: string | null;
+  created_at: string;
+}
+
 export interface ProjectContext {
   project_id: string;
   agents_version: number;
@@ -62,12 +85,6 @@ export interface ProjectContext {
   token: string;
   expires_at: string;
   refresh_after?: string;
-}
-
-export interface LocalProjectAdapterStatus {
-  ok: boolean;
-  project_id: string;
-  listen_port: number;
 }
 
 export interface WikiUploadStatsMember {
@@ -1377,6 +1394,38 @@ export async function downloadProjectAgents(projectId: string): Promise<Blob> {
   return res.blob();
 }
 
+export async function previewProjectAgentsTemplate(projectId: string): Promise<ProjectAgentsTemplatePreview> {
+  return call<ProjectAgentsTemplatePreview>(`/v4/projects/${encodeURIComponent(projectId)}/agents/template-preview`, { cache: 'no-store' });
+}
+
+export async function resetProjectAgentsToTemplate(
+  projectId: string,
+  input: { expected_version: number | null; expected_sha256: string | null; template_sha256: string },
+): Promise<ProjectAgentsResetResult> {
+  return call<ProjectAgentsResetResult>(`/v4/projects/${encodeURIComponent(projectId)}/agents/reset-to-template`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function listProjectAgentsVersions(projectId: string): Promise<ProjectAgentsVersionSummary[]> {
+  const res = await call<{ project_id: string; versions: ProjectAgentsVersionSummary[] }>(
+    `/v4/projects/${encodeURIComponent(projectId)}/agents/versions`,
+    { cache: 'no-store' },
+  );
+  return res.versions;
+}
+
+export async function downloadProjectAgentsVersion(projectId: string, version: number): Promise<Blob> {
+  const res = await fetch(
+    `${getApiBase()}/v4/projects/${encodeURIComponent(projectId)}/agents/versions/${encodeURIComponent(String(version))}/download`,
+    { credentials: 'include' },
+  );
+  if (!res.ok) throw new ApiError(res.status, null, `下载失败 (${res.status})`);
+  return res.blob();
+}
+
 export async function createProjectContext(projectId: string, keyId?: string): Promise<ProjectContext> {
   const qs = keyId ? `?key_id=${encodeURIComponent(keyId)}` : '';
   return call<ProjectContext>(`/v4/projects/${encodeURIComponent(projectId)}/context${qs}`, {
@@ -1386,17 +1435,8 @@ export async function createProjectContext(projectId: string, keyId?: string): P
   });
 }
 
-export async function getLocalProjectAdapterStatus(port: number): Promise<LocalProjectAdapterStatus> {
-  const response = await fetch(`http://127.0.0.1:${port}/control/status`, {
-    cache: 'no-store',
-    mode: 'cors',
-  });
-  if (!response.ok) throw new ApiError(response.status, null, `本机适配器不可用 (${response.status})`);
-  return response.json() as Promise<LocalProjectAdapterStatus>;
-}
-
 export async function getProjectWikiUploadStats(projectId: string): Promise<WikiUploadStats> {
-  return call<WikiUploadStats>(`/v4/projects/${encodeURIComponent(projectId)}/wiki-upload-stats`, { cache: 'no-store' });
+  return call<WikiUploadStats>(`/v4/projects/${encodeURIComponent(projectId)}/conversation-upload-stats`, { cache: 'no-store' });
 }
 
 export async function listProjectCatalog(): Promise<Project[]> {
