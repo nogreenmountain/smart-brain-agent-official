@@ -1,9 +1,17 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ApiError } from '@/lib/api';
+import { ApiError, type ProjectMemoryDraft } from '@/lib/api';
 import AdminPage from './page';
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((next) => {
+    resolve = next;
+  });
+  return { promise, resolve };
+}
 
 vi.mock('@/components/management-workspace/TeamDirectoryPanel', () => ({
   TeamDirectoryPanel: () => <div data-testid="team-directory-panel">团队账号维护</div>,
@@ -17,13 +25,19 @@ vi.mock('@/components/management-workspace/ProjectMembersPanel', () => ({
   ),
 }));
 
+vi.mock('@/components/project/ProjectAgentsPanel', () => ({
+  ProjectAgentsPanel: ({ projectId }: { projectId: string }) => <div data-testid="project-agents-panel" data-project-id={projectId}>项目 AGENTS 规则</div>,
+}));
+
 const navigation = vi.hoisted(() => ({
   push: vi.fn(),
   replace: vi.fn(),
 }));
 
 const mocks = vi.hoisted(() => ({
+  createProject: vi.fn(),
   createProjectMemoryDepartment: vi.fn(),
+  deleteProject: vi.fn(),
   getMe: vi.fn(),
   getProjectRepository: vi.fn(),
   listProjectCreationRequests: vi.fn(),
@@ -49,7 +63,9 @@ vi.mock('@/lib/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/api')>();
   return {
     ...actual,
+    createProject: mocks.createProject,
     createProjectMemoryDepartment: mocks.createProjectMemoryDepartment,
+    deleteProject: mocks.deleteProject,
     getMe: mocks.getMe,
     getProjectRepository: mocks.getProjectRepository,
     listProjectCreationRequests: mocks.listProjectCreationRequests,
@@ -260,6 +276,7 @@ describe('AdminPage', () => {
     const membersTab = screen.getByRole('tab', { name: '成员管理' });
     expect(projectsTab).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByText('PROJECT PROFILE')).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: '项目成员' }));
     expect(screen.getByTestId('project-members-panel')).toHaveAttribute('data-project-id', 'project-1');
     expect(screen.getByTestId('project-members-panel')).toHaveAttribute('data-can-manage', 'true');
 
@@ -302,7 +319,8 @@ describe('AdminPage', () => {
 
     render(<AdminPage />);
 
-    expect(await screen.findByTestId('project-members-panel')).toHaveAttribute('data-project-id', 'project-1');
+    await user.click(await screen.findByRole('tab', { name: '项目成员' }));
+    expect(screen.getByTestId('project-members-panel')).toHaveAttribute('data-project-id', 'project-1');
     await user.click(screen.getByRole('button', { name: /第二项目/ }));
     expect(screen.getByTestId('project-members-panel')).toHaveAttribute('data-project-id', 'project-2');
   });
@@ -317,14 +335,296 @@ describe('AdminPage', () => {
     expect(screen.queryByText('PROJECT PROFILE')).not.toBeInTheDocument();
   });
 
+  it('opens project creation on demand and cancellation never submits a project', async () => {
+    const user = userEvent.setup();
+    render(<AdminPage />);
+
+    await screen.findByRole('heading', { name: '项目列表' });
+    expect(screen.queryByRole('heading', { name: '创建项目' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: '创建项目' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '创建项目' }));
+    expect(screen.getByRole('dialog', { name: '创建项目' })).toBeInTheDocument();
+    await user.type(screen.getByLabelText('新项目名称'), '取消的本地候选');
+    await user.click(screen.getByRole('button', { name: '取消创建' }));
+    expect(screen.queryByRole('dialog', { name: '创建项目' })).not.toBeInTheDocument();
+    expect(mocks.createProject).not.toHaveBeenCalled();
+  });
+
+  it('focuses project creation, keeps keyboard focus inside, and restores its trigger on Escape', async () => {
+    const user = userEvent.setup();
+    render(<AdminPage />);
+    const trigger = await screen.findByRole('button', { name: '创建项目' });
+    await user.click(trigger);
+    expect(screen.getByLabelText('新项目名称')).toHaveFocus();
+    screen.getByRole('button', { name: '取消创建' }).focus();
+    await user.tab();
+    expect(screen.getByLabelText('项目第一分级')).toHaveFocus();
+    await user.tab({ shift: true });
+    expect(screen.getByRole('button', { name: '取消创建' })).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: '创建项目' })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+    expect(mocks.createProject).not.toHaveBeenCalled();
+  });
+
+  it('separates overview, project members, and AGENTS while keeping cross-project approvals reachable', async () => {
+    const user = userEvent.setup();
+    render(<AdminPage />);
+    await screen.findByText('PROJECT PROFILE');
+    expect(screen.getByRole('tab', { name: '概览' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.queryByTestId('project-members-panel')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('project-agents-panel')).not.toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: '项目成员' }));
+    expect(screen.getByTestId('project-members-panel')).toHaveAttribute('data-project-id', 'project-1');
+    expect(screen.queryByLabelText('项目名称')).not.toBeInTheDocument();
+    expect(screen.getByText('所有项目待审批内容')).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: 'AGENTS 规则' }));
+    expect(screen.getByTestId('project-agents-panel')).toHaveAttribute('data-project-id', 'project-1');
+    expect(screen.queryByTestId('project-members-panel')).not.toBeInTheDocument();
+    expect(screen.getAllByText('另一个项目的审批资料').length).toBeGreaterThan(0);
+  });
+
+  it('filters the current category without clearing the selected project and sizes short lists to content', async () => {
+    const user = userEvent.setup();
+    mocks.listProjectCatalog.mockResolvedValue([
+      { id: 'project-1', org_id: 'org-1', name: 'Alpha', environment: 'development', department_id: 'research-direct', role: 'owner' },
+      { id: 'project-2', org_id: 'org-1', name: 'Beta', environment: 'development', department_id: 'research-direct', role: 'owner', completed_at: '2026-08-01' },
+    ]);
+    render(<AdminPage />);
+    await screen.findByText('PROJECT PROFILE');
+    const list = screen.getByLabelText('项目纵向滑动列表');
+    expect(list).toHaveClass('max-h-[336px]');
+    expect(list).not.toHaveClass('h-[336px]');
+    await user.type(screen.getByLabelText('搜索当前分类项目'), 'Beta');
+    expect(screen.getByText('Beta')).toBeInTheDocument();
+    expect(within(list).queryByText('Alpha')).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Alpha' })).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('项目状态'), 'active');
+    expect(screen.getByText('当前筛选未找到项目')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Alpha' })).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('项目状态'), 'completed');
+    expect(screen.getByText('Beta')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '清除筛选' }));
+    expect(within(screen.getByLabelText('项目纵向滑动列表')).getByRole('button', { name: /Alpha/ })).toHaveAttribute('aria-current', 'true');
+  });
+
+  it('counts only this project in its overview while retaining the global approval queue', async () => {
+    const otherProjectDraft = (await mocks.listProjectMemoryReviewQueue())[1];
+    mocks.listProjectMemoryReviewQueue.mockResolvedValue([otherProjectDraft]);
+    render(<AdminPage />);
+    await screen.findByText('3 个');
+    expect(screen.getByText(/2 待审 \/ 1 入库/)).toBeInTheDocument();
+    expect(screen.getAllByText('另一个项目的审批资料').length).toBeGreaterThan(0);
+  });
+
+  it('shows a successful creation even if refreshing the catalog fails, without allowing a duplicate retry', async () => {
+    const user = userEvent.setup();
+    mocks.createProject.mockResolvedValue({ id: 'created-project', org_id: 'org-1', name: '创建成功的项目', environment: 'development', department_id: 'research-direct' });
+    mocks.listProjectCatalog.mockResolvedValueOnce([
+      { id: 'project-1', org_id: 'org-1', name: '项目 A', environment: 'development', department_id: 'research-direct', role: 'owner' },
+    ]).mockRejectedValue(new Error('catalog temporarily unavailable'));
+    render(<AdminPage />);
+    await user.click(await screen.findByRole('button', { name: '创建项目' }));
+    await user.type(screen.getByLabelText('新项目名称'), '创建成功的项目');
+    await user.click(within(screen.getByRole('dialog', { name: '创建项目' })).getByRole('button', { name: '创建项目' }));
+    expect(await screen.findByRole('heading', { name: '创建成功的项目' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: '创建项目' })).not.toBeInTheDocument();
+    expect(screen.getByText('项目 创建成功的项目 已创建；列表刷新失败，请稍后重新加载页面。')).toBeInTheDocument();
+    expect(mocks.createProject).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not bring back a project deleted while creation waits for its response and catalog refresh fails', async () => {
+    const user = userEvent.setup();
+    const deletion = deferred<void>();
+    const creation = deferred<{ id: string; org_id: string; name: string; environment: string; department_id: string }>();
+    mocks.deleteProject.mockReturnValue(deletion.promise);
+    mocks.createProject.mockReturnValue(creation.promise);
+    mocks.listProjects.mockResolvedValue([
+      { id: 'project-1', org_id: 'org-1', name: '即将删除的项目', environment: 'development', department_id: 'research-direct', role: 'owner' },
+      { id: 'project-2', org_id: 'org-1', name: '保留的项目', environment: 'development', department_id: 'research-direct', role: 'owner' },
+    ]);
+    mocks.listProjectCatalog.mockResolvedValueOnce([
+      { id: 'project-1', org_id: 'org-1', name: '即将删除的项目', environment: 'development', department_id: 'research-direct', role: 'owner' },
+      { id: 'project-2', org_id: 'org-1', name: '保留的项目', environment: 'development', department_id: 'research-direct', role: 'owner' },
+    ]).mockRejectedValue(new Error('catalog temporarily unavailable'));
+    render(<AdminPage />);
+    await user.click(await screen.findByRole('button', { name: '删除项目' }));
+    await user.type(screen.getByLabelText('请输入项目名称“即将删除的项目”确认'), '即将删除的项目');
+    await user.click(screen.getByRole('button', { name: '确认永久删除' }));
+    await user.click(screen.getByRole('button', { name: '创建项目' }));
+    await user.type(screen.getByLabelText('新项目名称'), '新项目');
+    await user.click(within(screen.getByRole('dialog', { name: '创建项目' })).getByRole('button', { name: '创建项目' }));
+    await act(async () => deletion.resolve());
+    await act(async () => creation.resolve({ id: 'created-project', org_id: 'org-1', name: '新项目', environment: 'development', department_id: 'research-direct' }));
+    const list = screen.getByLabelText('项目纵向滑动列表');
+    expect(within(list).queryByRole('button', { name: /project-1/ })).not.toBeInTheDocument();
+    expect(within(list).getByRole('button', { name: /project-2/ })).toBeInTheDocument();
+    expect(within(list).getByRole('button', { name: /created-project/ })).toHaveAttribute('aria-current', 'true');
+    expect(within(screen.getByTestId('my-projects-card')).queryByRole('button', { name: /即将删除的项目/ })).not.toBeInTheDocument();
+  });
+
+  it('keeps the selected cross-project approval available when the current category is empty', async () => {
+    const user = userEvent.setup();
+    departments.push(
+      { id: 'empty-root', name: '空分类', sort_order: 20, parent_id: null, allows_projects: false, level: 1 },
+      { id: 'empty-direct', name: '直属分级', sort_order: 21, parent_id: 'empty-root', allows_projects: true, level: 2 },
+    );
+    render(<AdminPage />);
+    await user.click(await screen.findByText('另一个项目的审批资料'));
+    await user.selectOptions(screen.getByLabelText('第一分级'), 'empty-root');
+    expect(await screen.findByText('当前分类没有项目')).toBeInTheDocument();
+    expect(screen.getByText('所有项目待审批内容')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '另一个项目的审批资料' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '批准并入库' }));
+    expect(mocks.reviewProjectMemoryDraft).toHaveBeenCalledWith('pending-other', 'approve', '');
+  });
+
+  it('clears destructive confirmation when changing between projects with the same name', async () => {
+    const user = userEvent.setup();
+    mocks.listProjectCatalog.mockResolvedValue([
+      { id: 'project-1', org_id: 'org-1', name: '同名项目', environment: 'development', department_id: 'research-direct', role: 'owner' },
+      { id: 'project-2', org_id: 'org-1', name: '同名项目', environment: 'development', department_id: 'research-direct', role: 'owner' },
+    ]);
+    render(<AdminPage />);
+    await user.click(await screen.findByRole('button', { name: '删除项目' }));
+    await user.type(screen.getByLabelText('请输入项目名称“同名项目”确认'), '同名项目');
+    const list = screen.getByLabelText('项目纵向滑动列表');
+    await user.click(within(list).getByRole('button', { name: /project-2/ }));
+    expect(screen.queryByRole('button', { name: '确认永久删除' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '删除项目' }));
+    expect(screen.getByLabelText('请输入项目名称“同名项目”确认')).toHaveValue('');
+  });
+
+  it('ignores a late memory response from the previously selected project', async () => {
+    const user = userEvent.setup();
+    const projectOne = deferred<ProjectMemoryDraft[]>();
+    const projectTwo = deferred<ProjectMemoryDraft[]>();
+    mocks.listProjectCatalog.mockResolvedValue([
+      { id: 'project-1', org_id: 'org-1', name: '项目 A', environment: 'development', department_id: 'research-direct', role: 'owner' },
+      { id: 'project-2', org_id: 'org-1', name: '项目 B', environment: 'development', department_id: 'research-direct', role: 'owner' },
+    ]);
+    mocks.listProjectMemoryDrafts.mockImplementation((projectId: string) => (
+      projectId === 'project-1' ? projectOne.promise : projectTwo.promise
+    ));
+
+    render(<AdminPage />);
+    await waitFor(() => expect(mocks.listProjectMemoryDrafts).toHaveBeenCalledWith('project-1'));
+    await user.click(within(screen.getByLabelText('项目纵向滑动列表')).getByRole('button', { name: /project-2/ }));
+    await waitFor(() => expect(mocks.listProjectMemoryDrafts).toHaveBeenCalledWith('project-2'));
+
+    await act(async () => projectTwo.resolve([]));
+    expect(screen.getByRole('heading', { name: '项目 B' })).toBeInTheDocument();
+    expect(screen.getByText('0 个')).toBeInTheDocument();
+    await act(async () => projectOne.resolve([
+      { id: 'late-a', project_id: 'project-1', department_id: 'research-direct', department_name: '直属分级', title: 'A 的迟到数据', status: 'pending_review', markdown_content: 'late', source_count: 1, document_id: null, created_at: '2026-10-10', updated_at: '2026-10-10' },
+    ]));
+    expect(screen.getByRole('heading', { name: '项目 B' })).toBeInTheDocument();
+    expect(screen.getByText('0 个')).toBeInTheDocument();
+  });
+
+  it('does not reselect a completed project when reopening finishes after the user switches projects', async () => {
+    const user = userEvent.setup();
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    const update = deferred<{ id: string; org_id: string; name: string; environment: string; department_id: string; role: 'owner'; completed_at: null }>();
+    mocks.listProjectCatalog.mockResolvedValue([
+      { id: 'project-1', org_id: 'org-1', name: '已结项 A', environment: 'development', department_id: 'research-direct', role: 'owner', completed_at: '2026-08-01' },
+      { id: 'project-2', org_id: 'org-1', name: '项目 B', environment: 'development', department_id: 'research-direct', role: 'owner', completed_at: null },
+    ]);
+    mocks.updateProject.mockReturnValue(update.promise);
+
+    render(<AdminPage />);
+    await user.click(await screen.findByRole('button', { name: '恢复为进行中' }));
+    await user.click(within(screen.getByLabelText('项目纵向滑动列表')).getByRole('button', { name: /project-2/ }));
+    expect(screen.getByRole('heading', { name: '项目 B' })).toBeInTheDocument();
+    await act(async () => update.resolve({ id: 'project-1', org_id: 'org-1', name: '已结项 A', environment: 'development', department_id: 'research-direct', role: 'owner', completed_at: null }));
+    expect(screen.getByRole('heading', { name: '项目 B' })).toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
+  it('selects a project created in another category and clears filters hiding it', async () => {
+    const user = userEvent.setup();
+    departments.push(
+      { id: 'industry', name: '产业侧', sort_order: 20, parent_id: null, allows_projects: false, level: 1 },
+      { id: 'industry-direct', name: '直属分级', sort_order: 21, parent_id: 'industry', allows_projects: true, level: 2 },
+    );
+    const created = { id: 'created-project', org_id: 'org-1', name: '新项目 B', environment: 'development', department_id: 'industry-direct', role: 'owner', completed_at: null };
+    mocks.createProject.mockResolvedValue(created);
+    mocks.listProjectCatalog.mockResolvedValueOnce([
+      { id: 'project-1', org_id: 'org-1', name: '原项目 A', environment: 'development', department_id: 'research-direct', role: 'owner' },
+    ]).mockResolvedValue([created]);
+    render(<AdminPage />);
+    await screen.findByRole('heading', { name: '原项目 A' });
+    await user.type(screen.getByLabelText('搜索当前分类项目'), '旧的筛选');
+    await user.selectOptions(screen.getByLabelText('项目状态'), 'completed');
+    await user.click(screen.getByRole('button', { name: '创建项目' }));
+    await user.selectOptions(screen.getByLabelText('项目第一分级'), 'industry');
+    await user.type(screen.getByLabelText('新项目名称'), '新项目 B');
+    await user.click(within(screen.getByRole('dialog', { name: '创建项目' })).getByRole('button', { name: '创建项目' }));
+    await screen.findByRole('heading', { name: '新项目 B' });
+    expect(screen.getByLabelText('第一分级')).toHaveValue('industry');
+    expect(screen.getByLabelText('第二分级')).toHaveValue('industry-direct');
+    expect(screen.getByLabelText('搜索当前分类项目')).toHaveValue('');
+    expect(screen.getByLabelText('项目状态')).toHaveValue('all');
+    expect(within(screen.getByLabelText('项目纵向滑动列表')).getByRole('button', { name: /created-project/ })).toHaveAttribute('aria-current', 'true');
+    await user.click(screen.getByRole('tab', { name: '项目成员' }));
+    expect(screen.getByTestId('project-members-panel')).toHaveAttribute('data-project-id', 'created-project');
+  });
+
+  it('keeps the new selection when a deletion of the previous project finishes', async () => {
+    const user = userEvent.setup();
+    const deletion = deferred<void>();
+    const projects = [
+      { id: 'project-1', org_id: 'org-1', name: '项目 A', environment: 'development', department_id: 'research-direct', role: 'owner' },
+      { id: 'project-2', org_id: 'org-1', name: '项目 B', environment: 'development', department_id: 'research-direct', role: 'owner' },
+    ];
+    mocks.listProjectCatalog.mockResolvedValue(projects);
+    mocks.deleteProject.mockReturnValue(deletion.promise);
+    render(<AdminPage />);
+    await user.click(await screen.findByRole('button', { name: '删除项目' }));
+    await user.type(screen.getByLabelText('请输入项目名称“项目 A”确认'), '项目 A');
+    await user.click(screen.getByRole('button', { name: '确认永久删除' }));
+    await user.click(within(screen.getByLabelText('项目纵向滑动列表')).getByRole('button', { name: /project-2/ }));
+    await act(async () => deletion.resolve());
+    expect(mocks.deleteProject).toHaveBeenCalledWith('project-1', '项目 A');
+    expect(screen.getByRole('heading', { name: '项目 B' })).toBeInTheDocument();
+    expect(within(screen.getByLabelText('项目纵向滑动列表')).queryByRole('button', { name: /project-1/ })).not.toBeInTheDocument();
+  });
+
+  it('does not show a previous migration job or reselect its project after switching', async () => {
+    const user = userEvent.setup();
+    const migration = deferred<Awaited<ReturnType<typeof import('@/lib/api').startProjectDepartmentMigration>>>();
+    departments.push(
+      { id: 'industry', name: '产业侧', sort_order: 20, parent_id: null, allows_projects: false, level: 1 },
+      { id: 'industry-direct', name: '直属分级', sort_order: 21, parent_id: 'industry', allows_projects: true, level: 2 },
+    );
+    mocks.listProjectCatalog.mockResolvedValue([
+      { id: 'project-1', org_id: 'org-1', name: '项目 A', environment: 'development', department_id: 'research-direct', role: 'owner' },
+      { id: 'project-2', org_id: 'org-1', name: '项目 B', environment: 'development', department_id: 'research-direct', role: 'owner' },
+    ]);
+    mocks.startProjectDepartmentMigration.mockReturnValue(migration.promise);
+    render(<AdminPage />);
+    await user.click(await screen.findByRole('button', { name: '迁移分类' }));
+    await user.selectOptions(screen.getByLabelText('目标第一分级'), 'industry');
+    await user.click(screen.getByRole('checkbox', { name: '确认迁移项目知识库' }));
+    await user.click(screen.getByRole('button', { name: '开始迁移' }));
+    fireEvent.click(within(screen.getByLabelText('项目纵向滑动列表')).getByRole('button', { name: /project-2/ }));
+    await act(async () => migration.resolve({ id: 'migration-1', project_id: 'project-1', source_department_id: 'research-direct', source_department_name: '研发支撑 / 直属分级', target_department_id: 'industry-direct', target_department_name: '产业侧 / 直属分级', status: 'completed', progress: 100, current_step: 'completed', raw_material_count: 2, wiki_page_count: 3, meeting_record_count: 1, verified: true }));
+    expect(screen.getByRole('heading', { name: '项目 B' })).toBeInTheDocument();
+    expect(screen.getByLabelText('第二分级')).toHaveValue('research-direct');
+    await user.click(screen.getByRole('button', { name: '迁移分类' }));
+    expect(screen.queryByText('迁移完成')).not.toBeInTheDocument();
+    expect(screen.getByRole('checkbox', { name: '确认迁移项目知识库' })).not.toBeChecked();
+  });
+
   it('keeps project initialization controls compact and visible in the primary workspace', async () => {
     render(<AdminPage />);
 
     const main = await screen.findByRole('main');
     expect(main).toHaveClass('py-3');
     expect(screen.getByTestId('project-create-profile-workspace')).toHaveClass('gap-3');
-    expect(screen.getByRole('button', { name: '打开分类管理' })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: '创建项目' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '打开分类管理' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '创建项目' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: '创建项目' })).not.toBeInTheDocument();
   });
 
   it('uses a light project profile and only shows pending approval items', async () => {
@@ -443,7 +743,7 @@ describe('AdminPage', () => {
     expect(screen.getAllByText('待审批资料一').length).toBeGreaterThan(0);
   });
 
-  it('keeps the desktop create and profile workspace aligned to the project list card', async () => {
+  it('keeps the project sidebar independent of the longer detail workspace', async () => {
     render(<AdminPage />);
 
     const projectList = await screen.findByLabelText('项目纵向滑动列表');
@@ -451,12 +751,11 @@ describe('AdminPage', () => {
     const projectWorkspace = screen.getByTestId('project-create-profile-workspace');
     const profile = screen.getByTestId('project-profile-card');
 
-    expect(projectListCard).toHaveClass('h-full');
-    expect(projectWorkspace).toHaveClass(
-      'min-[1400px]:grid-cols-[minmax(240px,0.7fr)_minmax(360px,1.3fr)]',
-      'min-[1400px]:items-stretch',
-    );
-    expect(profile).toHaveClass('h-full');
+    expect(projectListCard).not.toHaveClass('h-full');
+    expect(projectListCard).toHaveClass('self-start');
+    expect(projectWorkspace).not.toHaveClass('min-[1400px]:items-stretch');
+    expect(profile).not.toHaveClass('h-full');
+    expect(screen.getByRole('complementary', { name: '项目导航' })).toContainElement(screen.getByTestId('my-projects-card'));
   });
 
   it('loads the global project catalog for a system administrator without direct project memberships', async () => {
@@ -530,7 +829,8 @@ describe('AdminPage', () => {
     await user.selectOptions(firstLevelSelect, 'new-root');
     expect(await screen.findByText('当前分类没有项目')).toBeInTheDocument();
     expect(await screen.findByText('请选择或创建项目')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: '创建项目' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '创建项目' }));
+    expect(screen.getByRole('dialog', { name: '创建项目' })).toBeInTheDocument();
   });
 
   it('selects a newly created first-level category for its next child and project', async () => {
@@ -566,6 +866,8 @@ describe('AdminPage', () => {
 
     expect(await screen.findByText('第一分级 新第一分级 已创建')).toBeInTheDocument();
     expect(screen.getByLabelText('上级第一分级')).toHaveValue('new-root');
+    await user.click(screen.getByRole('button', { name: '关闭分类管理' }));
+    await user.click(screen.getByRole('button', { name: '创建项目' }));
     expect(screen.getByLabelText('项目第一分级')).toHaveValue('new-root');
     expect(screen.getByLabelText('项目第二分级')).toHaveValue('new-root-direct');
   });
@@ -615,7 +917,7 @@ describe('AdminPage', () => {
       name: 'AI自进化框架（基于多智能体协同技术）-AI atuo evaluation',
     })).toBeInTheDocument();
     const projectWorkspace = screen.getByTestId('project-create-profile-workspace');
-    expect(projectWorkspace).toHaveClass('grid-cols-1');
+    expect(projectWorkspace).toHaveClass('min-w-0');
     expect(projectWorkspace).not.toHaveClass(
       'min-[1400px]:grid-cols-[minmax(240px,0.7fr)_minmax(360px,1.3fr)]',
     );
@@ -628,7 +930,7 @@ describe('AdminPage', () => {
     );
   });
 
-  it('keeps exactly three project rows visible and scrolls the remaining projects vertically', async () => {
+  it('caps long project lists for vertical scrolling and keeps active projects first', async () => {
     mocks.listProjectCatalog.mockResolvedValue([
       {
         id: 'completed-alpha',
@@ -683,7 +985,8 @@ describe('AdminPage', () => {
       'completed-alpha',
       'completed-charlie',
     ]);
-    expect(projectList).toHaveClass('h-[336px]', 'overflow-y-auto');
+    expect(projectList).toHaveClass('max-h-[336px]', 'overflow-y-auto');
+    expect(projectList).not.toHaveClass('h-[336px]');
     expect(screen.queryByRole('button', { name: '上一组项目' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '下一组项目' })).not.toBeInTheDocument();
   });

@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, ReactNode, useEffect, useMemo, useState } from 'react';
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   DndContext,
@@ -153,6 +153,9 @@ export default function AdminPage() {
   const [myProjects, setMyProjects] = useState<Project[]>([]);
   const [departmentId, setDepartmentId] = useState<DepartmentId>('research');
   const [projectId, setProjectId] = useState('');
+  const [projectSearch, setProjectSearch] = useState('');
+  const [projectStatus, setProjectStatus] = useState<'all' | 'active' | 'completed'>('all');
+  const [projectDetailTab, setProjectDetailTab] = useState<'overview' | 'members' | 'agents'>('overview');
   const [drafts, setDrafts] = useState<ProjectMemoryDraft[]>([]);
   const [reviewQueue, setReviewQueue] = useState<ProjectMemoryReviewQueueItem[]>([]);
   const [selectedDraftId, setSelectedDraftId] = useState('');
@@ -168,6 +171,7 @@ export default function AdminPage() {
   const [reviewing, setReviewing] = useState(false);
   const [reviewProgress, setReviewProgress] = useState<ReviewProgress | null>(null);
   const [creatingProject, setCreatingProject] = useState(false);
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
   const [updatingProject, setUpdatingProject] = useState(false);
   const [departmentTransferOpen, setDepartmentTransferOpen] = useState(false);
   const [transferDepartmentId, setTransferDepartmentId] = useState<DepartmentId>('');
@@ -187,6 +191,43 @@ export default function AdminPage() {
   const [sortingParentId, setSortingParentId] = useState<DepartmentId | null | undefined>(undefined);
   const [categoryManagementOpen, setCategoryManagementOpen] = useState(false);
   const [toast, setToast] = useState<{ msg: string; kind: 'info' | 'error' } | null>(null);
+  const activeProjectIdRef = useRef(projectId);
+  const projectMemoryRequestRef = useRef(0);
+  const createDialogRef = useRef<HTMLElement | null>(null);
+  const creatingProjectRef = useRef(creatingProject);
+  activeProjectIdRef.current = projectId;
+  creatingProjectRef.current = creatingProject;
+
+  useEffect(() => {
+    if (!createProjectOpen) return;
+    const dialog = createDialogRef.current;
+    if (!dialog) return;
+    const previousFocus = document.activeElement as HTMLElement | null;
+    dialog.querySelector<HTMLInputElement>('#new-project-name')?.focus();
+    function handleDialogKey(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (!creatingProjectRef.current) setCreateProjectOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab' || !dialog) return;
+      const controls = Array.from(dialog.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex="0"]',
+      )).filter((control) => control.tabIndex >= 0);
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (!first || !last) return;
+      if (!dialog.contains(document.activeElement) || (event.shiftKey ? document.activeElement === first : document.activeElement === last)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      }
+    }
+    document.addEventListener('keydown', handleDialogKey);
+    return () => {
+      document.removeEventListener('keydown', handleDialogKey);
+      if (previousFocus?.isConnected) previousFocus.focus();
+    };
+  }, [createProjectOpen]);
 
   useEffect(() => {
     function restoreView() {
@@ -213,7 +254,7 @@ export default function AdminPage() {
     label: department.parent_name ? `${department.parent_name} / ${department.name}` : department.name,
   }));
 
-  const filteredProjects = useMemo(
+  const categoryProjects = useMemo(
     () => projects
       .filter((project) => (project.department_id || 'research') === departmentId)
       .sort((left, right) => {
@@ -224,6 +265,15 @@ export default function AdminPage() {
       }),
     [projects, departmentId],
   );
+  const filteredProjects = useMemo(() => {
+    const search = projectSearch.trim().toLocaleLowerCase('zh-CN');
+    return categoryProjects.filter((project) => {
+      const matchesSearch = !search || project.name.toLocaleLowerCase('zh-CN').includes(search) || project.id.toLowerCase().includes(search);
+      const matchesStatus = projectStatus === 'all'
+        || (projectStatus === 'completed' ? Boolean(project.completed_at) : !project.completed_at);
+      return matchesSearch && matchesStatus;
+    });
+  }, [categoryProjects, projectSearch, projectStatus]);
 
   const selectedProject = projects.find((project) => project.id === projectId) || null;
   const selectedDepartment = departments.find((department) => department.id === departmentId);
@@ -250,7 +300,7 @@ export default function AdminPage() {
   const pendingDraftRows = reviewQueue;
   const selectedDraft = pendingDraftRows.find((draft) => draft.id === selectedDraftId) || pendingDraftRows[0] || null;
   const approvedDrafts = drafts.filter((draft) => draft.status === 'approved').length;
-  const pendingDrafts = pendingDraftRows.length;
+  const projectPendingDrafts = drafts.filter((draft) => draft.status === 'pending_review').length;
 
   const autoOrgName =
     (me?.memberships || []).find((membership) => membership.org_id === newProjectOrgId)?.org_name || '';
@@ -306,18 +356,27 @@ export default function AdminPage() {
   }, [router]);
 
   useEffect(() => {
-    const next = filteredProjects[0]?.id || '';
-    if (!filteredProjects.some((project) => project.id === projectId)) {
+    const next = categoryProjects[0]?.id || '';
+    if (!categoryProjects.some((project) => project.id === projectId)) {
       setProjectId(next);
     }
-  }, [departmentId, filteredProjects, projectId]);
+  }, [categoryProjects, departmentId, projectId]);
 
   useEffect(() => {
+    setDeleteProjectOpen(false);
+    setDeleteProjectConfirmation('');
+    setDepartmentTransferOpen(false);
+    setTransferDepartmentId('');
+    setMigrationConfirmed(false);
+    setMigrationJob(null);
+  }, [projectId]);
+
+  useEffect(() => {
+    const requestId = ++projectMemoryRequestRef.current;
+    setDrafts([]);
     if (!selectedProject) {
       setEditProjectName('');
       setEditCompletedAt('');
-      setDrafts([]);
-      setSelectedDraftId('');
       setDepartmentTransferOpen(false);
       setTransferDepartmentId('');
       setMigrationConfirmed(false);
@@ -326,14 +385,11 @@ export default function AdminPage() {
     }
     setEditProjectName(selectedProject.name);
     setEditCompletedAt(selectedProject.completed_at ? selectedProject.completed_at.slice(0, 10) : '');
-    void loadProjectMemory(selectedProject.id, selectedProjectCanManage);
+    void loadProjectMemory(selectedProject.id, selectedProjectCanManage, requestId);
+    return () => {
+      if (projectMemoryRequestRef.current === requestId) projectMemoryRequestRef.current += 1;
+    };
   }, [selectedProject, selectedProjectCanManage]);
-
-  async function refreshProjects(selectId?: string) {
-    const rows = await listProjectCatalog();
-    setProjects(rows);
-    if (selectId) setProjectId(selectId);
-  }
 
   async function refreshDepartments(selectDepartmentId?: DepartmentId) {
     const rows = await listProjectMemoryDepartments(true);
@@ -459,18 +515,20 @@ export default function AdminPage() {
     })();
   }
 
-  async function loadProjectMemory(pid: string, includeDrafts = true) {
+  async function loadProjectMemory(pid: string, includeDrafts = true, requestId = projectMemoryRequestRef.current) {
     try {
       if (!includeDrafts) {
-        setDrafts([]);
-        setSelectedDraftId('');
+        if (projectMemoryRequestRef.current === requestId) setDrafts([]);
         return;
       }
       const draftRows = await listProjectMemoryDrafts(pid);
-      setDrafts(draftRows);
-      setSelectedDraftId(draftRows.find((draft) => draft.status === 'pending_review')?.id || '');
+      if (projectMemoryRequestRef.current === requestId && activeProjectIdRef.current === pid) {
+        setDrafts(draftRows);
+      }
     } catch (error: unknown) {
-      setToast({ msg: error instanceof Error ? error.message : '加载项目记忆数据失败', kind: 'error' });
+      if (projectMemoryRequestRef.current === requestId && activeProjectIdRef.current === pid) {
+        setToast({ msg: error instanceof Error ? error.message : '加载项目记忆数据失败', kind: 'error' });
+      }
     }
   }
 
@@ -500,8 +558,24 @@ export default function AdminPage() {
       });
       setNewProjectName('');
       setNewProjectCompletedAt('');
-      await refreshProjects(project.id);
-      setToast({ msg: `项目 ${project.name} 已创建`, kind: 'info' });
+      const targetDepartmentId = (project.department_id || createDepartmentId) as DepartmentId;
+      let rows: Project[] | null = null;
+      let catalogRefreshed = true;
+      try {
+        rows = await listProjectCatalog();
+      } catch {
+        catalogRefreshed = false;
+      }
+      setProjects((current) => {
+        const next = rows ?? current;
+        return next.some((item) => item.id === project.id) ? next : [...next, project];
+      });
+      setDepartmentId(targetDepartmentId);
+      setProjectId(project.id);
+      setProjectSearch('');
+      setProjectStatus('all');
+      setCreateProjectOpen(false);
+      setToast({ msg: catalogRefreshed ? `项目 ${project.name} 已创建` : `项目 ${project.name} 已创建；列表刷新失败，请稍后重新加载页面。`, kind: 'info' });
     } catch (error: unknown) {
       setToast({ msg: error instanceof Error ? error.message : '创建项目失败', kind: 'error' });
     } finally {
@@ -552,20 +626,20 @@ export default function AdminPage() {
 
   async function reopenProject() {
     if (!selectedProject?.completed_at || !selectedProjectCanManage || updatingProject) return;
+    const targetProject = selectedProject;
     const confirmed = window.confirm(
-      `确认将项目“${selectedProject.name}”恢复为进行中吗？这会清空结项日期。`,
+      `确认将项目“${targetProject.name}”恢复为进行中吗？这会清空结项日期。`,
     );
     if (!confirmed) return;
     setUpdatingProject(true);
     try {
-      const project = await updateProject(selectedProject.id, { completed_at: null });
+      const project = await updateProject(targetProject.id, { completed_at: null });
       setProjects((current) =>
         current.map((item) => (
           item.id === project.id ? { ...item, ...project, role: item.role } : item
         )),
       );
-      setEditCompletedAt('');
-      setProjectId(project.id);
+      if (activeProjectIdRef.current === targetProject.id) setEditCompletedAt('');
       setToast({ msg: '项目已恢复为进行中', kind: 'info' });
     } catch (error: unknown) {
       setToast({ msg: error instanceof Error ? error.message : '恢复项目失败', kind: 'error' });
@@ -597,30 +671,34 @@ export default function AdminPage() {
 
   async function transferProjectDepartment() {
     if (!selectedProject || !selectedProjectCanManage || !transferDepartmentId || !migrationConfirmed || transferringDepartment) return;
-    const currentDepartmentId = selectedProject.department_id || departmentId;
-    if (transferDepartmentId === currentDepartmentId) return;
+    const targetProject = selectedProject;
+    const sourceDepartmentId = targetProject.department_id || departmentId;
+    const targetDepartmentId = transferDepartmentId;
+    if (targetDepartmentId === sourceDepartmentId) return;
     setTransferringDepartment(true);
     try {
-      let job = await startProjectDepartmentMigration(selectedProject.id, {
-        target_department_id: transferDepartmentId,
-        expected_source_department_id: currentDepartmentId,
+      let job = await startProjectDepartmentMigration(targetProject.id, {
+        target_department_id: targetDepartmentId,
+        expected_source_department_id: sourceDepartmentId,
         migrate_knowledge_base: true,
       });
-      setMigrationJob(job);
+      if (activeProjectIdRef.current === targetProject.id) setMigrationJob(job);
       while (job.status === 'queued' || job.status === 'running') {
         await new Promise((resolve) => window.setTimeout(resolve, 150));
-        job = await getProjectDepartmentMigration(selectedProject.id, job.id);
-        setMigrationJob(job);
+        job = await getProjectDepartmentMigration(targetProject.id, job.id);
+        if (activeProjectIdRef.current === targetProject.id) setMigrationJob(job);
       }
       if (job.status !== 'completed') throw new Error(job.error_message || '知识库迁移失败');
-      const project = { ...selectedProject, department_id: transferDepartmentId };
+      const project = { ...targetProject, department_id: targetDepartmentId };
       setProjects((current) =>
         current.map((item) => (
           item.id === project.id ? { ...item, ...project, role: item.role } : item
         )),
       );
-      setDepartmentId(transferDepartmentId);
-      setProjectId(project.id);
+      if (activeProjectIdRef.current === targetProject.id) {
+        setDepartmentId(targetDepartmentId);
+        setProjectId(project.id);
+      }
       setToast({ msg: '项目分类与知识库已完成迁移', kind: 'info' });
     } catch (error: unknown) {
       setToast({ msg: error instanceof Error ? error.message : '移交部门失败', kind: 'error' });
@@ -632,15 +710,13 @@ export default function AdminPage() {
   async function removeProject() {
     if (!selectedProject || deletingProject) return;
     if (deleteProjectConfirmation !== selectedProject.name) return;
+    const targetProject = selectedProject;
     setDeletingProject(true);
     try {
-      await deleteProject(selectedProject.id, deleteProjectConfirmation);
-      const remaining = projects.filter((project) => project.id !== selectedProject.id);
-      setProjects(remaining);
-      const next = remaining.find((project) => (project.department_id || 'research') === departmentId) || remaining[0];
-      setProjectId(next?.id || '');
-      setDeleteProjectOpen(false);
-      setDeleteProjectConfirmation('');
+      await deleteProject(targetProject.id, deleteProjectConfirmation);
+      setProjects((current) => current.filter((project) => project.id !== targetProject.id));
+      setMyProjects((current) => current.filter((project) => project.id !== targetProject.id));
+      if (activeProjectIdRef.current === targetProject.id) setProjectId('');
       setToast({ msg: '项目已删除', kind: 'info' });
     } catch (error: unknown) {
       setToast({ msg: error instanceof Error ? error.message : '删除项目失败', kind: 'error' });
@@ -704,11 +780,20 @@ export default function AdminPage() {
       <header className="sticky top-0 z-10 shrink-0 border-b border-[#d7e0ec] bg-white/95 px-4 py-3 backdrop-blur md:px-6">
         <div className="mx-auto max-w-[1440px]">
           <div className="flex flex-wrap items-start gap-3">
-            <div className="min-w-0 flex-1">
-              <div className="text-[12px] font-bold tracking-[0.08em] text-brand-600">ADMINISTRATION HUB</div>
-              <h1 className="mt-0.5 text-[24px] font-semibold leading-tight tracking-normal text-[#10213e]">管理工作台</h1>
-              <p className="mt-0.5 text-sm leading-5 text-[#6e7d97]">集中完成项目初始化、分类维护、团队账号和项目成员管理。</p>
+            <div className="min-w-0 w-full flex-auto sm:w-auto sm:flex-1">
+              <div className="hidden text-[12px] font-bold tracking-[0.08em] text-brand-600">ADMINISTRATION HUB</div>
+              <h1 className="text-xl font-semibold leading-tight tracking-normal text-[#10213e]">管理工作台</h1>
+              <p className="mt-0.5 hidden text-xs leading-5 text-[#6e7d97] sm:block">集中完成项目初始化、分类维护、团队账号和项目成员管理。</p>
             </div>
+            {activeView === 'projects' && canCreateProjects && (
+              <Button type="button" onClick={() => {
+                setCreateTopLevelDepartmentId(selectedTopLevelDepartmentId);
+                setCreateDepartmentId(departmentId);
+                setCreateProjectOpen(true);
+              }}>
+                <Plus size={16} aria-hidden={true} />创建项目
+              </Button>
+            )}
             {activeView === 'projects' && selectedProject && (
             <Button type="button" variant="secondary" onClick={openKnowledgeBase}>
               <ExternalLink size={16} aria-hidden={true} />
@@ -716,7 +801,7 @@ export default function AdminPage() {
             </Button>
             )}
           </div>
-          <div role="tablist" aria-label="管理工作台视图" className="mt-3 grid grid-cols-2 gap-2">
+          <div role="tablist" aria-label="管理工作台视图" className="mt-2 flex flex-wrap gap-2">
             {([
               { id: 'projects' as const, label: '项目管理', description: '分类、创建、Profile 与知识资产', icon: FolderKanban },
               { id: 'members' as const, label: '成员管理', description: '团队账号、登录凭据与启停状态', icon: Users },
@@ -734,7 +819,7 @@ export default function AdminPage() {
                   className={`min-w-0 rounded-lg border px-3 py-2 text-left transition ${selected ? 'border-brand-500/35 bg-brand-500/10 text-brand-700 shadow-sm' : 'border-[#d7e0ec] bg-[#f8fafc] text-[#53647d] hover:border-brand-500/25 hover:bg-white'}`}
                 >
                   <span className="flex items-center gap-2 text-sm font-semibold"><Icon size={17} aria-hidden="true" />{view.label}</span>
-                  <span className="mt-0.5 hidden truncate text-xs text-[#7a889d] sm:block">{view.description}</span>
+                  <span className="sr-only">{view.description}</span>
                 </button>
               );
             })}
@@ -757,59 +842,17 @@ export default function AdminPage() {
       ) : <>
       <main className="flex-1 overflow-y-auto px-4 py-3 md:px-6">
         <div className="mx-auto grid max-w-[1440px] gap-3">
-          {me?.email.trim().toLowerCase() === 'hanshangbo@local.dev' && <GatewayKeyRequestsPanel />}
-          <section data-testid="my-projects-card" className="rounded-lg border border-[#d7e0ec] bg-white shadow-[0_10px_24px_rgba(15,35,66,0.04)]">
-            <div className="border-b border-[#d7e0ec] bg-[#f7faff] p-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600">
-                  <FolderKanban size={20} aria-hidden={true} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-xl font-semibold leading-tight text-[#10213e]">我的项目</h2>
-                  <p className="mt-1 text-sm text-[#6e7d97]">当前账号直接参与的项目（只读）。</p>
-                </div>
-              </div>
-            </div>
-            {loading ? (
-              <div className="p-5 text-center">
-                <LoadingDots />
-              </div>
-            ) : myProjects.length === 0 ? (
-              <div className="p-5">
-                <EmptyState title="暂无参与项目" hint="当前账号还没有直接参与的项目。" />
-              </div>
-            ) : (
-              <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
-                {myProjects.map((project) => (
-                  <button
-                    key={project.id}
-                    type="button"
-                    onClick={() => {
-                      setDepartmentId((project.department_id || 'research') as DepartmentId);
-                      setProjectId(project.id);
-                    }}
-                    className="min-w-0 rounded-lg border border-[#d7e0ec] bg-white p-4 text-left transition-colors hover:border-brand-500/35 hover:bg-[#f7faff]"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="min-w-0 break-words text-sm font-semibold text-[#10213e]">{project.name}</span>
-                      <ProjectStatusBadge completedAt={project.completed_at} />
-                    </div>
-                    <div className="mt-2 text-xs text-[#6e7d97]">我的角色：{projectRoleLabel(project.role)}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
-          <section className="grid grid-cols-1 items-stretch gap-3 xl:grid-cols-[minmax(300px,0.82fr)_minmax(0,1.35fr)]">
-              <div data-project-list-card className="h-full overflow-hidden rounded-lg border border-[#d7e0ec] bg-white shadow-[0_10px_24px_rgba(15,35,66,0.04)]">
+          <section className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[minmax(280px,0.58fr)_minmax(0,1.42fr)]">
+            <aside aria-label="项目导航" className="min-w-0 space-y-3">
+              <div data-project-list-card className="self-start overflow-hidden rounded-lg border border-[#d7e0ec] bg-white shadow-[0_10px_24px_rgba(15,35,66,0.04)]">
               <div className="border-b border-[#d7e0ec] bg-[#f7faff] p-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600">
+                <div className="flex items-center gap-2">
+                  <div className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600 sm:flex">
                     <FolderKanban size={20} aria-hidden={true} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <h2 className="text-xl font-semibold leading-tight text-[#10213e]">项目列表</h2>
-                    <p className="mt-1 text-sm text-[#6e7d97]">固定显示三行，使用右侧滑块向下浏览。</p>
+                    <h2 className="text-lg font-semibold leading-tight text-[#10213e]">项目列表</h2>
+                    <p className="mt-1 text-xs text-[#6e7d97]">按分类浏览</p>
                   </div>
                   {me?.is_system_admin && (
                     <Button type="button" size="sm" variant="secondary" aria-label="打开分类管理" onClick={() => setCategoryManagementOpen(true)}>
@@ -817,7 +860,7 @@ export default function AdminPage() {
                     </Button>
                   )}
                 </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <div className="mt-3 grid grid-cols-2 gap-2">
                   <Field label="第一分级" htmlFor="project-first-level">
                     <Select
                       id="project-first-level"
@@ -847,6 +890,15 @@ export default function AdminPage() {
                     </Field>
                   )}
                 </div>
+                <div className="mt-3 grid gap-2">
+                  <Field label="搜索当前分类项目" htmlFor="project-search">
+                    <Input id="project-search" value={projectSearch} onChange={(event) => setProjectSearch(event.target.value)} placeholder="项目名称或 ID" />
+                  </Field>
+                  <Field label="项目状态" htmlFor="project-status">
+                    <Select id="project-status" value={projectStatus} onChange={(value) => setProjectStatus(value as typeof projectStatus)} options={[{ value: 'all', label: '全部状态' }, { value: 'active', label: '进行中' }, { value: 'completed', label: '已结项' }]} />
+                  </Field>
+                  {(projectSearch || projectStatus !== 'all') && <Button type="button" size="sm" variant="ghost" aria-label="清除筛选" onClick={() => { setProjectSearch(''); setProjectStatus('all'); }}>清除筛选</Button>}
+                </div>
               </div>
 
               {loading ? (
@@ -856,21 +908,22 @@ export default function AdminPage() {
               ) : filteredProjects.length === 0 ? (
                 <div className="p-5">
                   <EmptyState
-                    title="当前分类没有项目"
-                    hint={canCreateProjects ? '可以在右侧创建一个新的研发项目' : '请联系项目负责人把你加入对应项目'}
+                    title={categoryProjects.length > 0 ? '当前筛选未找到项目' : '当前分类没有项目'}
+                    hint={categoryProjects.length > 0 ? '调整搜索内容或清除筛选；当前项目详情仍会保留。' : canCreateProjects ? '点击上方创建项目，或切换到其他分类。' : '切换分类或联系项目负责人。'}
                   />
                 </div>
               ) : (
                 <div
                   aria-label="项目纵向滑动列表"
-                  className="h-[336px] divide-y divide-[#d7e0ec] overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
+                  className="max-h-[336px] divide-y divide-[#d7e0ec] overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
                 >
                   {filteredProjects.map((project) => (
                     <button
                       key={project.id}
                       type="button"
                       onClick={() => setProjectId(project.id)}
-                      className={`h-28 w-full overflow-hidden px-5 py-4 text-left transition-colors ${
+                      aria-current={project.id === selectedProject?.id ? 'true' : undefined}
+                      className={`min-h-28 w-full overflow-hidden px-5 py-4 text-left transition-colors ${
                         project.id === selectedProject?.id ? 'bg-brand-500/10' : 'hover:bg-[#f7faff]'
                       }`}
                     >
@@ -889,75 +942,67 @@ export default function AdminPage() {
                   ))}
                 </div>
               )}
+              {!loading && categoryProjects.length > 0 && (
+                <div className="border-t border-[#d7e0ec] px-4 py-2 text-xs text-[#6e7d97]">
+                  显示 {filteredProjects.length} / {categoryProjects.length} 个项目
+                </div>
+              )}
             </div>
+
+          <section data-testid="my-projects-card" className="rounded-lg border border-[#d7e0ec] bg-white shadow-[0_10px_24px_rgba(15,35,66,0.04)]">
+            <div className="border-b border-[#d7e0ec] bg-[#f7faff] px-3 py-2">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600">
+                  <FolderKanban size={20} aria-hidden={true} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-sm font-semibold text-[#10213e]">我的项目</h2>
+                  <p className="mt-1 text-xs text-[#6e7d97]">直接参与的项目快速入口（只读）。</p>
+                </div>
+              </div>
+            </div>
+            {loading ? (
+              <div className="p-5 text-center">
+                <LoadingDots />
+              </div>
+            ) : myProjects.length === 0 ? (
+              <div className="p-3">
+                <EmptyState title="暂无参与项目" hint="当前账号还没有直接参与的项目。" />
+              </div>
+            ) : (
+              <div className="max-h-56 space-y-2 overflow-y-auto p-3">
+                {myProjects.map((project) => (
+                  <button
+                    key={project.id}
+                    type="button"
+                    onClick={() => {
+                      setDepartmentId((project.department_id || 'research') as DepartmentId);
+                      setProjectId(project.id);
+                      setProjectSearch('');
+                      setProjectStatus('all');
+                    }}
+                    className="w-full min-w-0 rounded-lg border border-[#d7e0ec] bg-white px-3 py-2 text-left transition-colors hover:border-brand-500/35 hover:bg-[#f7faff]"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="min-w-0 break-words text-sm font-semibold text-[#10213e]">{project.name}</span>
+                      <ProjectStatusBadge completedAt={project.completed_at} />
+                    </div>
+                    <div className="mt-2 text-xs text-[#6e7d97]">我的角色：{projectRoleLabel(project.role)}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </section>
+            </aside>
 
             <div
               data-testid="project-create-profile-workspace"
-              className={`grid min-w-0 gap-3 ${
-                canCreateProjects
-                  ? 'min-[1400px]:grid-cols-[minmax(240px,0.7fr)_minmax(360px,1.3fr)] min-[1400px]:items-stretch'
-                  : 'grid-cols-1'
-              }`}
+              className="grid min-w-0 gap-3"
             >
-              {canCreateProjects && (
-                <section className="h-full rounded-lg border border-[#d7e0ec] bg-white p-4 shadow-[0_10px_24px_rgba(15,35,66,0.04)]">
-                  <div className="mb-3 flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600">
-                      <Plus size={20} aria-hidden={true} />
-                    </div>
-                    <div>
-                      <h2 className="text-xl font-semibold leading-tight text-[#10213e]">创建项目</h2>
-                      <p className="mt-1 text-sm text-[#6e7d97]">新项目会归属当前精确选择的第一、第二分级。</p>
-                    </div>
-                  </div>
-                  <form onSubmit={handleCreateProject} className="grid gap-3">
-                    <div className="grid gap-3">
-                      <Field label="项目第一分级" htmlFor="create-project-first-level">
-                        <Select id="create-project-first-level" value={createTopLevelDepartmentId} onChange={(value) => selectCreateTopLevelDepartment(value as DepartmentId)} options={topLevelDepartments.map((department) => ({ value: department.id, label: department.name }))} />
-                      </Field>
-                      <Field label="项目第二分级" htmlFor="create-project-second-level">
-                        <Select id="create-project-second-level" value={createDepartmentId} onChange={(value) => setCreateDepartmentId(value as DepartmentId)} options={createSecondLevelDepartments.map((department) => ({ value: department.id, label: department.name }))} />
-                      </Field>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
-                    <Field label="新项目名称" htmlFor="new-project-name">
-                      <Input
-                        id="new-project-name"
-                        value={newProjectName}
-                        onChange={(event) => setNewProjectName(event.target.value)}
-                        placeholder="例如：智慧大脑 Agent"
-                      />
-                    </Field>
-                    <Field label="新项目结项日期" htmlFor="new-project-completed-at">
-                      <Input
-                        id="new-project-completed-at"
-                        type="date"
-                        value={newProjectCompletedAt}
-                        onChange={(event) => setNewProjectCompletedAt(event.target.value)}
-                      />
-                    </Field>
-                    <div className="flex items-end sm:col-span-2 xl:col-span-1">
-                      <Button
-                        type="submit"
-                        className="w-full"
-                        disabled={!newProjectName.trim() || !newProjectOrgId || !createDepartmentId || creatingProject}
-                        title={newProjectOrgId ? `自动归属：${autoOrgName || '当前组织'}` : '当前账号没有可创建项目的组织权限'}
-                      >
-                        {creatingProject ? <LoadingDots /> : '创建项目'}
-                      </Button>
-                    </div>
-                    </div>
-                  </form>
-                  {!newProjectOrgId && (
-                    <div className="mt-3 rounded-lg border border-[#f0a23a]/25 bg-[#f0a23a]/15 px-3 py-2 text-sm text-[#9a5a0d]">
-                      当前账号没有可创建项目的组织权限。
-                    </div>
-                  )}
-                </section>
-              )}
+
 
               {selectedProject ? (
-                <section data-testid="project-profile-card" className="h-full rounded-lg border border-[#d7e0ec] bg-white p-4 text-[#10213e] shadow-[0_10px_24px_rgba(15,35,66,0.04)]">
+                <section data-testid="project-profile-card" className="min-w-0 rounded-lg border border-[#d7e0ec] bg-white p-4 text-[#10213e] shadow-[0_10px_24px_rgba(15,35,66,0.04)]">
                   <div className="flex flex-wrap items-start gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600">
                       <Archive size={20} aria-hidden={true} />
@@ -976,11 +1021,21 @@ export default function AdminPage() {
                         : selectedDepartment?.name}
                     />
                   </div>
+                  <div role="tablist" aria-label="项目详情" className="mt-4 flex gap-1 border-b border-[#d7e0ec] pb-2">
+                    {([
+                      { id: 'overview' as const, label: '概览' },
+                      { id: 'members' as const, label: '项目成员' },
+                      { id: 'agents' as const, label: 'AGENTS 规则' },
+                    ]).map((tab) => (
+                      <button key={tab.id} type="button" role="tab" aria-selected={projectDetailTab === tab.id} onClick={() => setProjectDetailTab(tab.id)} className={`rounded-lg px-3 py-2 text-sm font-medium transition ${projectDetailTab === tab.id ? 'bg-brand-500/10 text-brand-700' : 'text-[#6e7d97] hover:bg-[#f7f9fc]'}`}>{tab.label}</button>
+                    ))}
+                  </div>
+                  {projectDetailTab === 'overview' && (<>
                   <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <Metric title="创建日期" value={fmtDate(selectedProject.created_at)} icon={<CalendarDays size={17} />} />
                     <Metric title="结项日期" value={fmtDate(selectedProject.completed_at)} icon={<CalendarDays size={17} />} />
                     {selectedProjectCanManage ? (
-                      <Metric title="记忆草稿" value={`${drafts.length} 个`} detail={`${pendingDrafts} 待审 / ${approvedDrafts} 入库`} icon={<FileText size={17} />} />
+                      <Metric title="记忆草稿" value={`${drafts.length} 个`} detail={`${projectPendingDrafts} 待审 / ${approvedDrafts} 入库`} icon={<FileText size={17} />} />
                     ) : (
                       <Metric title="项目角色" value={projectRoleLabel(selectedProject.role)} detail="可提交项目资料" icon={<FileText size={17} />} />
                     )}
@@ -1038,15 +1093,6 @@ export default function AdminPage() {
                         )}
                       </div>
                     </form>
-                  )}
-                  {selectedProject && (
-                    <div className="mt-5 border-t border-[#e3e9f1] pt-5">
-                      <ProjectAgentsPanel
-                        projectId={selectedProject.id}
-                        projectName={selectedProject.name}
-                        canManage={selectedProjectCanManage}
-                      />
-                    </div>
                   )}
                   {selectedProjectCanDelete && deleteProjectOpen && (
                     <div className="mt-4 rounded-lg border border-[#df5a67]/30 bg-[#fff7f7] p-4">
@@ -1148,20 +1194,19 @@ export default function AdminPage() {
                     </section>
                     </div>
                   )}
+                  </>)}
+                  {projectDetailTab === 'members' && (
+                    <div className="mt-4"><ProjectMembersPanel key={selectedProject.id} project={selectedProject} currentUser={me} canManage={selectedProjectCanManage} /></div>
+                  )}
+                  {projectDetailTab === 'agents' && (
+                    <div className="mt-4 min-w-0 break-words"><ProjectAgentsPanel key={selectedProject.id} projectId={selectedProject.id} projectName={selectedProject.name} canManage={selectedProjectCanManage} /></div>
+                  )}
                 </section>
               ) : null}
             </div>
           </section>
 
-          <ProjectMembersPanel
-            project={selectedProject}
-            currentUser={me}
-            canManage={selectedProjectCanManage}
-          />
-
-          {selectedProject ? (
-            <>
-              {canReviewAnyProject && (
+          {canReviewAnyProject && (
                 <section className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
                 <div className="rounded-lg border border-[#d7e0ec] bg-white shadow-[0_10px_24px_rgba(15,35,66,0.04)]">
                   <div className="flex items-center justify-between gap-2 border-b border-[#d7e0ec] bg-[#f7faff] px-5 py-4">
@@ -1173,7 +1218,7 @@ export default function AdminPage() {
                       刷新
                     </Button>
                   </div>
-                  <div className="max-h-[620px] overflow-y-auto p-4">
+                  <div className="p-4">
                     {pendingDraftRows.length === 0 ? (
                        <EmptyState title="当前没有待审批内容" hint="项目原始资料、会议记录和 GitHub 仓库地址提交后会统一出现在这里" />
                     ) : (
@@ -1211,7 +1256,7 @@ export default function AdminPage() {
                   </div>
                 </div>
 
-                <div className="max-h-[72vh] overflow-y-auto rounded-lg border border-[#d7e0ec] bg-white p-5 shadow-[0_10px_24px_rgba(15,35,66,0.04)] md:p-6">
+                <div className="rounded-lg border border-[#d7e0ec] bg-white p-5 shadow-[0_10px_24px_rgba(15,35,66,0.04)] md:p-6">
                   {selectedDraft ? (
                     <div className="space-y-4">
                       <div className="sticky top-0 z-[1] flex flex-col gap-3 border-b border-[#e3e9f1] bg-white pb-3 md:flex-row md:items-center md:justify-between">
@@ -1265,13 +1310,71 @@ export default function AdminPage() {
                   )}
                 </div>
                 </section>
-              )}
-            </>
-          ) : (
-            <EmptyState title="请选择或创建项目" hint="项目管理会把仓库、长期记忆和知识库入口放在同一个页面" />
           )}
+          {!selectedProject && <EmptyState title="请选择或创建项目" hint="在左侧选择项目；全项目待审批内容可独立处理。" />}
+          {me?.email.trim().toLowerCase() === 'hanshangbo@local.dev' && <GatewayKeyRequestsPanel />}
         </div>
       </main>
+
+              {canCreateProjects && createProjectOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#10213e]/55 p-3 sm:p-6">
+                <section ref={createDialogRef} role="dialog" aria-modal="true" aria-labelledby="create-project-dialog-title" className="max-h-[calc(100dvh-2rem)] w-full max-w-xl overflow-y-auto rounded-xl border border-[#d7e0ec] bg-white p-5 shadow-xl">
+                  <div className="mb-3 flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600">
+                      <Plus size={20} aria-hidden={true} />
+                    </div>
+                    <div>
+                      <h2 id="create-project-dialog-title" className="text-xl font-semibold leading-tight text-[#10213e]">创建项目</h2>
+                      <p className="mt-1 text-sm text-[#6e7d97]">新项目会归属当前精确选择的第一、第二分级。</p>
+                    </div>
+                  </div>
+                  <form onSubmit={handleCreateProject} className="grid gap-3">
+                    <div className="grid gap-3">
+                      <Field label="项目第一分级" htmlFor="create-project-first-level">
+                        <Select id="create-project-first-level" value={createTopLevelDepartmentId} onChange={(value) => selectCreateTopLevelDepartment(value as DepartmentId)} options={topLevelDepartments.map((department) => ({ value: department.id, label: department.name }))} />
+                      </Field>
+                      <Field label="项目第二分级" htmlFor="create-project-second-level">
+                        <Select id="create-project-second-level" value={createDepartmentId} onChange={(value) => setCreateDepartmentId(value as DepartmentId)} options={createSecondLevelDepartments.map((department) => ({ value: department.id, label: department.name }))} />
+                      </Field>
+                    </div>
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+                    <Field label="新项目名称" htmlFor="new-project-name">
+                      <Input
+                        id="new-project-name"
+                        value={newProjectName}
+                        onChange={(event) => setNewProjectName(event.target.value)}
+                        placeholder="例如：智慧大脑 Agent"
+                      />
+                    </Field>
+                    <Field label="新项目结项日期" htmlFor="new-project-completed-at">
+                      <Input
+                        id="new-project-completed-at"
+                        type="date"
+                        value={newProjectCompletedAt}
+                        onChange={(event) => setNewProjectCompletedAt(event.target.value)}
+                      />
+                    </Field>
+                    <div className="flex items-end sm:col-span-2 xl:col-span-1">
+                      <Button
+                        type="submit"
+                        className="w-full"
+                        disabled={!newProjectName.trim() || !newProjectOrgId || !createDepartmentId || creatingProject}
+                        title={newProjectOrgId ? `自动归属：${autoOrgName || '当前组织'}` : '当前账号没有可创建项目的组织权限'}
+                      >
+                        {creatingProject ? <LoadingDots /> : '创建项目'}
+                      </Button>
+                    </div>
+                    </div>
+                    <Button type="button" variant="secondary" disabled={creatingProject} onClick={() => setCreateProjectOpen(false)}>取消创建</Button>
+                  </form>
+                  {!newProjectOrgId && (
+                    <div className="mt-3 rounded-lg border border-[#f0a23a]/25 bg-[#f0a23a]/15 px-3 py-2 text-sm text-[#9a5a0d]">
+                      当前账号没有可创建项目的组织权限。
+                    </div>
+                  )}
+                </section>
+                </div>
+              )}
 
       {me?.is_system_admin && categoryManagementOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#10213e]/55 p-3 backdrop-blur-[2px] sm:p-6">
@@ -1502,10 +1605,10 @@ function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="block text-sm" htmlFor={htmlFor}>
-      <span className="mb-1.5 block text-sm font-medium text-[#253655]">{label}</span>
+    <div className="min-w-0 text-sm">
+      <label htmlFor={htmlFor} className="mb-1.5 block text-sm font-medium text-[#253655]">{label}</label>
       {children}
-    </label>
+    </div>
   );
 }
 
