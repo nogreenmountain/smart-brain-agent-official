@@ -239,3 +239,7 @@
 ## 2026-10-11 18:06 管理工作台视觉刷新再次核对，生产仍受 Docker 容量门禁阻断
 
 核对时间：2026-10-11 18:05–18:06（Asia/Shanghai）。发布记录已提交并推送（46d0112）。生产 Docker 可用空间 42,743,386,112 字节，约 39.82 GiB，仍低于 40 GiB 硬储备线；备份 timer ctive/waiting/success、无 maintenance.pending、内存和其他数据盘通过。未执行构建、候选容器创建或生产切换，生产主前端仍为 85f21545e254… / sha256:743d5093f6c4…，API/edge 未变。禁止通过 prune、删历史镜像/容器/日志/parts 或迁移数据绕过门禁。详见 [发布记录](releases/management-workspace-visual-refresh-20261011-r1.md)。
+
+## 2026-10-11 18:11 管理工作台视觉刷新生产只读终态核对
+
+核对时间：2026-10-11 18:11（Asia/Shanghai）。因 Docker 39.82 GiB 仍低于 40 GiB 门禁，本次没有生产切换。现网 /login、/wiki、/admin、/workday、/health/ready 均 200，匿名 Key/用量接口 401；前端 85f21545e254…、API 621935d93b37…、edge 72614f0f738… 的 ID、镜像、启动时间保持不变。现网健康核对不等于本次视觉改动已部署。

@@ -16,3 +16,7 @@
 ## 18:06 容量门禁复核
 
 再次核对时间：2026-10-11 18:05–18:06（Asia/Shanghai）。Docker 可用空间为 42,743,386,112 字节（约 39.82 GiB），仍低于 40 GiB 硬储备线，差额约 197 MiB。备份 timer 为 ctive/waiting/success，无 /srv/smartbrain/maintenance.pending，内存可用约 8.00 GiB，/srv/smartbrain、/srv/smartbrain-backups、/srv/smartbrain-cold 均通过各自门槛。未执行构建、候选容器创建、生产切换，也未清理历史对象；生产前端、API 和 edge 容器 ID/镜像保持不变。
+
+## 18:11 生产只读终态核对
+
+核对时间：2026-10-11 18:11（Asia/Shanghai）。未执行生产切换，当前前端容器 85f21545e254d0d6ee85fd03f4ff3c3bed898f32a118e7227dfe8d7007846006、API 容器 621935d93b37fe1a6a9245307686ee1e0fd4ca8afc4497b914cf4085e3c46227、edge 容器 72614f0f738bd35815aeb2455dc97df99d06d1dc480e17db70ceeeb66d42e73 均运行中且启动时间/镜像未变。公网 /login、/wiki、/admin、/workday、/health/ready 返回 200；匿名 /v4/ai-gateway/keys 与 /v4/ai-usage/records 返回 401。该核对证明现网旧版本健康，不证明本次视觉改动已生产验收。
