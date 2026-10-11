@@ -235,3 +235,7 @@
 
 核对时间：2026-10-11 17:57（Asia/Shanghai）。管理工作台视觉刷新提交 deec447 已推送 official/codex/project-memory-no-adapter；本地测试、构建及静态浏览器验收通过。生产发布脚本在构建镜像前发现 Docker 可用空间 42,747,080,704 字节（约39.81GiB），低于40GiB硬储备线，未创建镜像/候选容器，未切换业务。生产主前端仍为容器 85f21545e254… / 镜像 743d5093f6c4…，API/edge未变；备份timer active/waiting/success，无maintenance.pending。需先按容量处置规则恢复储备后，才能重新执行发布前门禁；本轮未删历史、未prune、未改生产。详见 [发布记录](releases/management-workspace-visual-refresh-20261011-r1.md)。
 
+
+## 2026-10-11 18:06 管理工作台视觉刷新再次核对，生产仍受 Docker 容量门禁阻断
+
+核对时间：2026-10-11 18:05–18:06（Asia/Shanghai）。发布记录已提交并推送（46d0112）。生产 Docker 可用空间 42,743,386,112 字节，约 39.82 GiB，仍低于 40 GiB 硬储备线；备份 timer ctive/waiting/success、无 maintenance.pending、内存和其他数据盘通过。未执行构建、候选容器创建或生产切换，生产主前端仍为 85f21545e254… / sha256:743d5093f6c4…，API/edge 未变。禁止通过 prune、删历史镜像/容器/日志/parts 或迁移数据绕过门禁。详见 [发布记录](releases/management-workspace-visual-refresh-20261011-r1.md)。

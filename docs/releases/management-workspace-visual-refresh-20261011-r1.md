@@ -13,3 +13,6 @@
 ## 回退和限制
 
 没有执行生产切换，因此没有本次发布回退动作。旧生产镜像和容器保持运行。Docker 主机显示约 13.61 GB 可回收镜像和 411.5 MB 已停止容器空间，但历史清理/删镜像/日志/parts/prune 未执行，需按容量处置授权另行处理后再重跑发布前门禁。
+## 18:06 容量门禁复核
+
+再次核对时间：2026-10-11 18:05–18:06（Asia/Shanghai）。Docker 可用空间为 42,743,386,112 字节（约 39.82 GiB），仍低于 40 GiB 硬储备线，差额约 197 MiB。备份 timer 为 ctive/waiting/success，无 /srv/smartbrain/maintenance.pending，内存可用约 8.00 GiB，/srv/smartbrain、/srv/smartbrain-backups、/srv/smartbrain-cold 均通过各自门槛。未执行构建、候选容器创建、生产切换，也未清理历史对象；生产前端、API 和 edge 容器 ID/镜像保持不变。
