@@ -230,3 +230,8 @@
 核对时间：2026-10-11 13:12（Asia/Shanghai）。在保留项目搜索、状态筛选、按需创建、项目详情 tab、成员、AGENTS 规则与审批行为的前提下，完成管理工作台视觉层刷新：恢复标题层级，改用中性灰蓝背景与轻量 segmented control，压缩项目列表留白，降低指标/统计卡视觉噪声，将保存设为详情主操作、知识库/迁移/恢复设为次级操作、删除设为低强调危险入口。仅修改 `smartbrain-dashboard/app/(with-shell)/admin/page.tsx` 的标记和 `smartbrain-dashboard/app/globals.css` 的作用域样式，未改 API、状态、权限、异步时序或业务处理。
 
 本地证据：`.artifacts/management-workspace-visual-refresh-20261011/`。管理页及相关组件 49 项通过，`npx tsc --noEmit` 退出0，`npm run build` 退出0（仅既有 PersonalApiKeys hook warning），静态构建浏览器验收在1440/1024/375视口通过，无横向溢出和JS错误。生产页面本轮未重新核对；未提交、未推送、未部署，合成fixture证据不替代真实生产验收。
+
+## 2026-10-11 17:58 管理工作台视觉刷新已提交推送，生产部署被 Docker 容量门禁阻断
+
+核对时间：2026-10-11 17:57（Asia/Shanghai）。管理工作台视觉刷新提交 deec447 已推送 official/codex/project-memory-no-adapter；本地测试、构建及静态浏览器验收通过。生产发布脚本在构建镜像前发现 Docker 可用空间 42,747,080,704 字节（约39.81GiB），低于40GiB硬储备线，未创建镜像/候选容器，未切换业务。生产主前端仍为容器 85f21545e254… / 镜像 743d5093f6c4…，API/edge未变；备份timer active/waiting/success，无maintenance.pending。需先按容量处置规则恢复储备后，才能重新执行发布前门禁；本轮未删历史、未prune、未改生产。详见 [发布记录](releases/management-workspace-visual-refresh-20261011-r1.md)。
+
