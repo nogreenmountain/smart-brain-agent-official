@@ -28,3 +28,210 @@ html, body {
 .prose-sm { line-height: 1.7; }
 .prose-sm p { margin: 0.5em 0; }
 .prose-sm code { background: #f3f4f6; padding: 0.1em 0.3em; border-radius: 3px; font-size: 0.9em; }
+
+/* Management workspace visual refresh */
+.management-workspace {
+  --workspace-bg: #f4f6fa;
+  --workspace-ink: #17233d;
+  --workspace-muted: #6c7890;
+  --workspace-border: #e4e9f1;
+  --workspace-soft: #f8fafc;
+  background: var(--workspace-bg) !important;
+  color: var(--workspace-ink);
+}
+
+.management-workspace > header {
+  border-color: var(--workspace-border) !important;
+  background: rgba(255, 255, 255, 0.94) !important;
+  box-shadow: 0 1px 0 rgba(23, 35, 61, 0.02);
+}
+
+.management-workspace > header h1 {
+  letter-spacing: -0.02em;
+}
+
+.management-workspace > header [data-workspace-tabs] {
+  display: inline-flex;
+  width: fit-content;
+  margin-top: 1rem;
+  padding: 4px;
+  gap: 2px;
+  border-radius: 12px;
+  background: #eef2f7;
+}
+
+.management-workspace > header [data-workspace-tabs] > button[role='tab'] {
+  min-height: 36px;
+  border-color: transparent !important;
+  border-radius: 9px;
+  background: transparent !important;
+  color: #66758d;
+  box-shadow: none;
+}
+
+.management-workspace > header [data-workspace-tabs] > button[role='tab']:hover {
+  color: #334d77;
+  background: rgba(255, 255, 255, 0.66) !important;
+}
+
+.management-workspace > header [data-workspace-tabs] > button[role='tab'][aria-selected='true'] {
+  border-color: #e0e7f2 !important;
+  background: #ffffff !important;
+  color: #315dc4;
+  box-shadow: 0 2px 7px rgba(31, 57, 99, 0.09);
+}
+
+.management-workspace [data-project-list-card],
+.management-workspace [data-testid='my-projects-card'],
+.management-workspace [data-testid='project-profile-card'],
+.management-workspace [data-testid='review-workspace'] > div {
+  border-color: var(--workspace-border) !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 24px rgba(31, 50, 84, 0.055) !important;
+}
+
+.management-workspace [data-project-list-card] > div:first-child,
+.management-workspace [data-testid='my-projects-card'] > div:first-child,
+.management-workspace [data-testid='review-workspace'] > div:first-child > div:first-child {
+  border-color: #edf1f6 !important;
+  background: #ffffff !important;
+}
+
+.management-workspace [data-project-list-card] > div:first-child {
+  padding: 1rem 1rem 0.875rem;
+}
+
+.management-workspace [data-project-list-card] [aria-label='项目纵向滑动列表'] {
+  border-top: 1px solid #edf1f6;
+}
+
+.management-workspace [data-project-list-card] [aria-label='项目纵向滑动列表'] > button {
+  min-height: 104px;
+  border-left: 3px solid transparent;
+  padding: 0.8rem 1rem;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+
+.management-workspace [data-project-list-card] [aria-label='项目纵向滑动列表'] > button[aria-current='true'] {
+  border-left-color: #4e76e9;
+  background: #f3f6ff !important;
+}
+
+.management-workspace [data-project-list-card] [aria-label='项目纵向滑动列表'] > button:not([aria-current='true']):hover {
+  background: #fafbfe !important;
+}
+
+.management-workspace [data-testid='my-projects-card'] > div:first-child {
+  padding: 0.75rem 1rem;
+}
+
+.management-workspace [data-testid='project-profile-card'] {
+  padding: 1.25rem;
+}
+
+.management-workspace [data-testid='project-profile-card'] > div[role='tablist'] {
+  border-color: #e8edf4 !important;
+}
+
+.management-workspace [data-testid='project-profile-card'] > div[role='tablist'] > button[role='tab'] {
+  border-radius: 8px;
+  color: #718096;
+}
+
+.management-workspace [data-testid='project-profile-card'] > div[role='tablist'] > button[role='tab'][aria-selected='true'] {
+  background: #eef3ff !important;
+  color: #315dc4;
+}
+
+.management-workspace [data-testid='review-workspace'] > div:first-child > div:first-child {
+  padding: 0.8rem 1rem;
+}
+
+.management-workspace [data-testid='review-workspace'] > div:first-child > div:nth-child(2),
+.management-workspace [data-testid='review-workspace'] > div:nth-child(2) {
+  background: #ffffff;
+}
+
+.management-workspace [data-testid='review-workspace'] > div:first-child button {
+  border-radius: 8px;
+}
+
+@media (max-width: 640px) {
+  .management-workspace > header [data-workspace-tabs] {
+    width: 100%;
+  }
+
+  .management-workspace > header [data-workspace-tabs] > button[role='tab'] {
+    flex: 1;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .management-workspace [data-testid='project-profile-card'] {
+    padding: 1rem;
+  }
+}
+
+.management-workspace .management-eyebrow {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: #5677c9;
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+}
+
+.management-workspace .management-metrics > div {
+  border-color: #e1e7f0 !important;
+  background: #f8faff !important;
+  box-shadow: none !important;
+  min-height: 92px;
+}
+
+.management-workspace .management-metrics > div:first-child {
+  background: #f6f9ff !important;
+}
+
+.management-workspace .management-project-form {
+  border-top-color: #e7ecf3 !important;
+}
+
+.management-workspace .management-project-actions {
+  grid-template-columns: minmax(0, 1.35fr) repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+}
+
+.management-workspace .management-project-actions > button:first-child {
+  grid-row: span 2;
+  min-height: 5.5rem;
+  border-radius: 10px;
+  font-size: 0.95rem;
+}
+
+.management-workspace .management-project-actions > button:nth-child(2),
+.management-workspace .management-project-actions > button:nth-child(3),
+.management-workspace .management-project-actions > button:nth-child(4) {
+  min-height: 2.5rem;
+  background: #fff !important;
+}
+
+.management-workspace .management-project-actions > .management-project-delete {
+  border-color: #f0b9c0 !important;
+  background: #fff8f8 !important;
+  color: #b23c4c !important;
+}
+
+.management-workspace .management-project-actions > .management-project-delete:hover {
+  background: #fff0f2 !important;
+}
+
+@media (max-width: 640px) {
+  .management-workspace .management-project-actions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .management-workspace .management-project-actions > button:first-child {
+    grid-row: auto;
+    grid-column: 1 / -1;
+    min-height: 2.75rem;
+  }
+}

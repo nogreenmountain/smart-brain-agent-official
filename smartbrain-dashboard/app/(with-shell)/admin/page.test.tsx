@@ -623,6 +623,8 @@ describe('AdminPage', () => {
     expect(main).toHaveClass('py-3');
     expect(screen.getByTestId('project-create-profile-workspace')).toHaveClass('gap-3');
     expect(await screen.findByRole('button', { name: '打开分类管理' })).toBeInTheDocument();
+    expect(screen.getByRole('tablist', { name: '管理工作台视图' })).toHaveAttribute('data-workspace-tabs', 'true');
+    expect(screen.getByTestId('project-profile-card')).toHaveAttribute('data-workspace-card', 'detail');
     expect(screen.getByRole('button', { name: '创建项目' })).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: '创建项目' })).not.toBeInTheDocument();
   });

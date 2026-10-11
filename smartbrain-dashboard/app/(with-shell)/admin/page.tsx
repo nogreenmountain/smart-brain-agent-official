@@ -776,12 +776,12 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="flex h-screen min-w-0 flex-col bg-[#eef3f9] text-[#10213e]">
+    <div data-testid="management-workspace" data-layout="refined" className="management-workspace flex h-screen min-w-0 flex-col bg-[#eef3f9] text-[#10213e]">
       <header className="sticky top-0 z-10 shrink-0 border-b border-[#d7e0ec] bg-white/95 px-4 py-3 backdrop-blur md:px-6">
         <div className="mx-auto max-w-[1440px]">
           <div className="flex flex-wrap items-start gap-3">
             <div className="min-w-0 w-full flex-auto sm:w-auto sm:flex-1">
-              <div className="hidden text-[12px] font-bold tracking-[0.08em] text-brand-600">ADMINISTRATION HUB</div>
+              <div className="management-eyebrow text-[12px] font-bold tracking-[0.08em] text-brand-600">ADMINISTRATION HUB</div>
               <h1 className="text-xl font-semibold leading-tight tracking-normal text-[#10213e]">管理工作台</h1>
               <p className="mt-0.5 hidden text-xs leading-5 text-[#6e7d97] sm:block">集中完成项目初始化、分类维护、团队账号和项目成员管理。</p>
             </div>
@@ -801,7 +801,7 @@ export default function AdminPage() {
             </Button>
             )}
           </div>
-          <div role="tablist" aria-label="管理工作台视图" className="mt-2 flex flex-wrap gap-2">
+          <div role="tablist" aria-label="管理工作台视图" data-workspace-tabs="true" className="mt-2 flex flex-wrap gap-2">
             {([
               { id: 'projects' as const, label: '项目管理', description: '分类、创建、Profile 与知识资产', icon: FolderKanban },
               { id: 'members' as const, label: '成员管理', description: '团队账号、登录凭据与启停状态', icon: Users },
@@ -1002,7 +1002,7 @@ export default function AdminPage() {
 
 
               {selectedProject ? (
-                <section data-testid="project-profile-card" className="min-w-0 rounded-lg border border-[#d7e0ec] bg-white p-4 text-[#10213e] shadow-[0_10px_24px_rgba(15,35,66,0.04)]">
+                <section data-testid="project-profile-card" data-workspace-card="detail" className="min-w-0 rounded-lg border border-[#d7e0ec] bg-white p-4 text-[#10213e] shadow-[0_10px_24px_rgba(15,35,66,0.04)]">
                   <div className="flex flex-wrap items-start gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600">
                       <Archive size={20} aria-hidden={true} />
@@ -1031,7 +1031,7 @@ export default function AdminPage() {
                     ))}
                   </div>
                   {projectDetailTab === 'overview' && (<>
-                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="management-metrics mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <Metric title="创建日期" value={fmtDate(selectedProject.created_at)} icon={<CalendarDays size={17} />} />
                     <Metric title="结项日期" value={fmtDate(selectedProject.completed_at)} icon={<CalendarDays size={17} />} />
                     {selectedProjectCanManage ? (
@@ -1044,7 +1044,7 @@ export default function AdminPage() {
                     <WikiUploadPieChart projectId={selectedProject.id} />
                   </div>
                   {selectedProjectCanManage && (
-                    <form onSubmit={saveProject} className="mt-4 grid gap-3 border-t border-[#e3e9f1] pt-4">
+                    <form onSubmit={saveProject} className="management-project-form mt-4 grid gap-3 border-t border-[#e3e9f1] pt-4">
                       <div className="grid gap-3 sm:grid-cols-[minmax(220px,1fr)_180px]">
                       <Field label="项目名称" htmlFor="edit-project-name">
                         <Input
@@ -1062,7 +1062,7 @@ export default function AdminPage() {
                         />
                       </Field>
                       </div>
-                      <div className="grid gap-2 sm:grid-cols-2 2xl:grid-cols-4">
+                      <div className="management-project-actions grid gap-2 sm:grid-cols-2 2xl:grid-cols-4">
                         <Button className="w-full" type="submit" disabled={!editProjectName.trim() || updatingProject}>
                           {updatingProject ? <LoadingDots /> : <><Save size={16} aria-hidden={true} />保存</>}
                         </Button>
@@ -1084,7 +1084,7 @@ export default function AdminPage() {
                           </Button>
                         )}
                         {selectedProjectCanDelete && (
-                          <Button className="w-full" type="button" variant="danger" onClick={() => {
+                          <Button className="management-project-delete w-full" type="button" variant="danger" onClick={() => {
                             setDeleteProjectOpen(true);
                             setDeleteProjectConfirmation('');
                           }} disabled={deletingProject}>
@@ -1207,7 +1207,7 @@ export default function AdminPage() {
           </section>
 
           {canReviewAnyProject && (
-                <section className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
+                <section data-testid="review-workspace" className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
                 <div className="rounded-lg border border-[#d7e0ec] bg-white shadow-[0_10px_24px_rgba(15,35,66,0.04)]">
                   <div className="flex items-center justify-between gap-2 border-b border-[#d7e0ec] bg-[#f7faff] px-5 py-4">
                     <div className="flex items-center gap-2 text-sm font-semibold text-[#10213e]">
