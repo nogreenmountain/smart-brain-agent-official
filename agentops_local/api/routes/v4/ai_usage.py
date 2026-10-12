@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import re
 import hashlib
 import logging
 import secrets
@@ -40,6 +39,7 @@ from agentops.workday.domain import business_day_utc_bounds
 from agentops.workday.identity import derive_employee_identity
 from agentops.api.routes.v4.ai_chat import _device_claims
 from agentops.ai_usage import gateway_content
+from agentops.ai_usage.work_record_projection import select_work_record_messages as _select_work_record_messages
 
 
 router = APIRouter(route_class=AuthenticatedRoute)
@@ -1190,7 +1190,7 @@ def _attach_messages(
         role = str(row.role or '').lower()
         if role not in {'user', 'assistant'}:
             continue
-        content = _clean_visible_message(role, str(row.content or ''))
+        content = str(row.content or '')
         if not content:
             continue
         messages.setdefault(str(row.session_id), []).append(
@@ -1202,40 +1202,13 @@ def _attach_messages(
             )
         )
     return [
-        replace(item, messages=tuple(messages.get(item.id, [])))
+        replace(item, messages=_select_work_record_messages(messages.get(item.id, [])))
         if item.record_type == "chat"
         else item
         for item in records
     ]
 
 
-_INTERNAL_CONTEXT_BLOCK = re.compile(
-    r"<environment_context\b[^>]*>.*?</environment_context\s*>|"
-    r"<external_codex_apps_open_page\b[^>]*>.*?</external_codex_apps_open_page\s*>",
-    re.IGNORECASE | re.DOTALL,
-)
-_CONVERSATION_SPEAKER = re.compile(r"(?:^|\n)\s*\*\*(用户|AI|assistant|user)\*\*\s*\n?", re.IGNORECASE)
-
-
-def _clean_visible_message(role: str, content: str) -> str:
-    """Keep the user-facing exchange and remove agent/runtime envelopes."""
-    cleaned = _INTERNAL_CONTEXT_BLOCK.sub("", content).strip()
-    matches = list(_CONVERSATION_SPEAKER.finditer(cleaned))
-    if matches:
-        wanted = "用户" if role == "user" else "ai"
-        selected = None
-        for index, match in enumerate(matches):
-            label = match.group(1).lower()
-            normalized = "用户" if label in {"用户", "user"} else "ai"
-            if normalized != wanted:
-                continue
-            start = match.end()
-            end = matches[index + 1].start() if index + 1 < len(matches) else len(cleaned)
-            selected = cleaned[start:end].strip()
-            break
-        if selected is not None:
-            cleaned = selected
-    return cleaned
 
 
 def _merge_synced_conversations(

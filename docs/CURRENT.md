@@ -1,3 +1,10 @@
+## 2026-10-12 16:00 AI 工作记录读侧投影候选已验证，进入受控发布
+
+核对时间：2026-10-12 16:00（Asia/Shanghai）。根因已确认：`ai_usage.py::_attach_messages()` 原先把 `public.ai_chat_messages` 中的 user/assistant 全量内容直接返回，导致 Codex transcript、工具调用、审批信封和中间过程进入工作记录界面。新增 `agentops_local/ai_usage/work_record_projection.py`，工作记录仅保留清理后的全部用户输入和最后一条可见 AI 总结；明确的环境上下文、transcript/approval runtime 信封及结构化审批回复被过滤，普通业务 JSON、`tool_call` 字段和相似业务文本保留。
+
+知识库写侧未串线：`ai_gateway.py::_materialize_project_conversation_record()` 仍把原始 `event.messages` 写入 `project_conversation_records` 与 `conversation_record` Wiki，未做迁移、删除或历史回写。投影纯函数 8 项、隔离路由 `_attach_messages()` 8 项通过；语法和 diff 检查通过。项目对话 PG/Wiki 测试因未配置 `SB_MEMORY_TEST_DSN` 共 14 项 skipped，不能称真实双写验收通过；真实成员登录端到端也未核对。用户已明确授权提交、推送和生产部署；本轮将只替换主 API，保留旧 API 回滚容器，前端、edge、数据库和个人代理不变。
+
+证据：`tasks/2026-10-12-ai-work-record-projection.md`、`plans/2026-10-12-ai-work-record-projection.md`、`.artifacts/ai-work-record-projection-20261012/`。
 ## 2026-10-12 13:25 管理工作台 AGENTS.md 设置入口回归修复已生产发布并完成静态资源终验（management-workspace-visual-refresh-20261012-r2）
 
 核对时间：2026-10-12 13:23–13:25（Asia/Shanghai）。用户反馈 AGENTS.md 设置模块消失后，已通过旧版本对比确认能力仍在，问题是视觉刷新把面板从概览常驻内容收进详情 tab，入口发现性下降。当前修复在概览页增加 `AGENTS.md 设置` callout 和 `打开 AGENTS.md 设置` 按钮，保留 `AGENTS 规则` tab 及既有初始化、上传、下载、版本历史、重新初始化和 CAS 冲突逻辑；同时保留“我的项目”主入口并移除详情卡残留 `min-height: 100%`，未改 API、权限、数据库、AGENTS 后端或状态逻辑。
