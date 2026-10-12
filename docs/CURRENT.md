@@ -1,3 +1,11 @@
+## 2026-10-12 13:25 管理工作台 AGENTS.md 设置入口回归修复已生产发布并完成静态资源终验（management-workspace-visual-refresh-20261012-r2）
+
+核对时间：2026-10-12 13:23–13:25（Asia/Shanghai）。用户反馈 AGENTS.md 设置模块消失后，已通过旧版本对比确认能力仍在，问题是视觉刷新把面板从概览常驻内容收进详情 tab，入口发现性下降。当前修复在概览页增加 `AGENTS.md 设置` callout 和 `打开 AGENTS.md 设置` 按钮，保留 `AGENTS 规则` tab 及既有初始化、上传、下载、版本历史、重新初始化和 CAS 冲突逻辑；同时保留“我的项目”主入口并移除详情卡残留 `min-height: 100%`，未改 API、权限、数据库、AGENTS 后端或状态逻辑。
+
+修复已提交并推送到 `official/codex/project-memory-no-adapter`，生产前端 `smartbrain-agentops-dashboard-1` 当前容器 `566de53e9ff3aa963883f2faaaa60ad24aaa39cbbdf771dad7fd7ef0a3269233`，镜像 `sha256:e2db095017cf968ef60fab937d47b124784cdf2dce51556b488e34d0cfd7fa56`，`StartedAt=2026-10-12T05:10:37.195456328Z`，`RestartCount=0`。生产 `/login`、`/wiki`、`/admin`、`/workday`、`/health/ready` 为 200，匿名 Key/records 为 401；`/admin` 引用的 12 个静态脚本全部与容器字节一致，新 chunk 实际含 `AGENTS.md 设置`、`打开 AGENTS.md 设置`、`AGENTS 规则` 和 `agents-settings-callout`。API `621935d3…`、edge `f72614f0…` 保持，旧前端和候选前端停止保留。未执行全局 prune、日志/备份/ClickHouse parts/业务容器清理。
+
+管理页与 AGENTS 面板 52 项通过，Next build 通过；fixture 1440/1024/375/many-projects 无横向溢出和 JS 错误。真实成员登录后的项目列表、callout 点击及 AGENTS 初始化/上传/下载闭环未核对，不能把 fixture 证据写成真实账号验收。详见 [任务](tasks/2026-10-11-management-workspace-visual-refresh.md)、[方案](plans/2026-10-11-management-workspace-visual-refresh.md)、[发布记录](releases/management-workspace-visual-refresh-20261012-r2.md) 和证据目录 `.artifacts/management-workspace-agents-visibility-20261012/`。
+
 # 智慧大脑开发与发布状态入口
 
 ## 2026-10-10 20:08 个人 API 使用记录增量化已发布生产并通过终验/归档复核（personal-api-incremental-records-20261010-r1）

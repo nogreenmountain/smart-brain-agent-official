@@ -844,7 +844,52 @@ export default function AdminPage() {
         <div className="mx-auto grid max-w-[1440px] gap-3">
           <section className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[minmax(280px,0.58fr)_minmax(0,1.42fr)]">
             <aside aria-label="项目导航" className="min-w-0 space-y-3">
-              <div data-project-list-card className="self-start overflow-hidden rounded-lg border border-[#d7e0ec] bg-white shadow-[0_10px_24px_rgba(15,35,66,0.04)]">
+              <section data-testid="my-projects-card" data-priority="primary" className="my-projects-primary rounded-xl border border-brand-500/25 bg-gradient-to-br from-[#f3f7ff] via-white to-[#eef4ff] shadow-[0_12px_28px_rgba(55,91,170,0.10)]">
+            <div className="border-b border-[#d7e0ec] bg-[#f7faff] px-3 py-2">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600">
+                  <FolderKanban size={20} aria-hidden={true} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-base font-semibold text-[#10213e]">我的项目</h2>
+                  <p className="mt-1 text-xs text-[#6e7d97]">直接参与的项目快速入口（只读）。</p>
+                </div>
+              </div>
+            </div>
+            {loading ? (
+              <div className="p-5 text-center">
+                <LoadingDots />
+              </div>
+            ) : myProjects.length === 0 ? (
+              <div className="p-3">
+                <EmptyState title="暂无参与项目" hint="当前账号还没有直接参与的项目。" />
+              </div>
+            ) : (
+              <div className="max-h-56 space-y-2 overflow-y-auto p-3">
+                {myProjects.map((project) => (
+                  <button
+                    key={project.id}
+                    type="button"
+                    aria-current={project.id === selectedProject?.id ? 'true' : undefined}
+                    onClick={() => {
+                      setDepartmentId((project.department_id || 'research') as DepartmentId);
+                      setProjectId(project.id);
+                      setProjectSearch('');
+                      setProjectStatus('all');
+                    }}
+                    className="w-full min-w-0 rounded-lg border border-[#d7e0ec] bg-white px-3 py-2 text-left transition-colors hover:border-brand-500/35 hover:bg-[#f7faff]"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="min-w-0 break-words text-sm font-semibold text-[#10213e]">{project.name}</span>
+                      <ProjectStatusBadge completedAt={project.completed_at} />
+                    </div>
+                    <div className="mt-2 text-xs text-[#6e7d97]">我的角色：{projectRoleLabel(project.role)}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+              </section>
+              <div data-testid="project-list-card" data-secondary="catalog" data-project-list-card className="self-start overflow-hidden rounded-lg border border-[#d7e0ec] bg-white shadow-[0_10px_24px_rgba(15,35,66,0.04)]">
               <div className="border-b border-[#d7e0ec] bg-[#f7faff] p-4">
                 <div className="flex items-center gap-2">
                   <div className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600 sm:flex">
@@ -949,50 +994,7 @@ export default function AdminPage() {
               )}
             </div>
 
-          <section data-testid="my-projects-card" className="rounded-lg border border-[#d7e0ec] bg-white shadow-[0_10px_24px_rgba(15,35,66,0.04)]">
-            <div className="border-b border-[#d7e0ec] bg-[#f7faff] px-3 py-2">
-              <div className="flex items-center gap-3">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600">
-                  <FolderKanban size={20} aria-hidden={true} />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-sm font-semibold text-[#10213e]">我的项目</h2>
-                  <p className="mt-1 text-xs text-[#6e7d97]">直接参与的项目快速入口（只读）。</p>
-                </div>
-              </div>
-            </div>
-            {loading ? (
-              <div className="p-5 text-center">
-                <LoadingDots />
-              </div>
-            ) : myProjects.length === 0 ? (
-              <div className="p-3">
-                <EmptyState title="暂无参与项目" hint="当前账号还没有直接参与的项目。" />
-              </div>
-            ) : (
-              <div className="max-h-56 space-y-2 overflow-y-auto p-3">
-                {myProjects.map((project) => (
-                  <button
-                    key={project.id}
-                    type="button"
-                    onClick={() => {
-                      setDepartmentId((project.department_id || 'research') as DepartmentId);
-                      setProjectId(project.id);
-                      setProjectSearch('');
-                      setProjectStatus('all');
-                    }}
-                    className="w-full min-w-0 rounded-lg border border-[#d7e0ec] bg-white px-3 py-2 text-left transition-colors hover:border-brand-500/35 hover:bg-[#f7faff]"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="min-w-0 break-words text-sm font-semibold text-[#10213e]">{project.name}</span>
-                      <ProjectStatusBadge completedAt={project.completed_at} />
-                    </div>
-                    <div className="mt-2 text-xs text-[#6e7d97]">我的角色：{projectRoleLabel(project.role)}</div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </section>
+
             </aside>
 
             <div
@@ -1040,6 +1042,20 @@ export default function AdminPage() {
                       <Metric title="项目角色" value={projectRoleLabel(selectedProject.role)} detail="可提交项目资料" icon={<FileText size={17} />} />
                     )}
                   </div>
+                  <section data-testid="agents-settings-callout" className="mt-4 flex flex-col gap-3 rounded-lg border border-brand-500/20 bg-brand-500/5 p-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-brand-600 shadow-sm">
+                        <FileText size={18} aria-hidden={true} />
+                      </div>
+                      <div className="min-w-0">
+                        <h3 className="text-sm font-semibold text-[#10213e]">AGENTS.md 设置</h3>
+                        <p className="mt-1 text-xs leading-5 text-[#50627b]">初始化、更新、上传、下载和版本历史都在这里管理。</p>
+                      </div>
+                    </div>
+                    <Button type="button" size="sm" variant="secondary" className="shrink-0" onClick={() => setProjectDetailTab('agents')}>
+                      打开 AGENTS.md 设置
+                    </Button>
+                  </section>
                   <div className="mt-4">
                     <WikiUploadPieChart projectId={selectedProject.id} />
                   </div>

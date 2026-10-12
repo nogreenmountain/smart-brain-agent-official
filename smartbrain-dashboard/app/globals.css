@@ -235,3 +235,34 @@ html, body {
     min-height: 2.75rem;
   }
 }
+
+.management-workspace .my-projects-primary {
+  position: relative;
+  overflow: hidden;
+}
+
+.management-workspace .my-projects-primary::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, #4e76e9, #86a8ff);
+}
+
+.management-workspace .my-projects-primary > div:first-child {
+  background: rgba(238, 244, 255, 0.82);
+  border-bottom-color: #d4e0f5;
+  padding: 0.85rem 1rem 0.75rem;
+}
+
+.management-workspace .my-projects-primary > div:last-child button,
+.management-workspace .my-projects-primary > div:nth-child(2) button {
+  border-color: #c7d7f4;
+  box-shadow: 0 2px 8px rgba(57, 91, 170, 0.06);
+}
+
+.management-workspace .my-projects-primary button[aria-current='true'] {
+  border-color: #4e76e9;
+  background: #e8efff;
+  box-shadow: inset 3px 0 0 #4e76e9, 0 4px 12px rgba(57, 91, 170, 0.12);
+}

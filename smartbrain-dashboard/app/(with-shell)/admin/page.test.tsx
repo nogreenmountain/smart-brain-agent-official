@@ -378,7 +378,10 @@ describe('AdminPage', () => {
     expect(screen.getByTestId('project-members-panel')).toHaveAttribute('data-project-id', 'project-1');
     expect(screen.queryByLabelText('项目名称')).not.toBeInTheDocument();
     expect(screen.getByText('所有项目待审批内容')).toBeInTheDocument();
-    await user.click(screen.getByRole('tab', { name: 'AGENTS 规则' }));
+    await user.click(screen.getByRole('tab', { name: '概览' }));
+    expect(screen.getByTestId('agents-settings-callout')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '打开 AGENTS.md 设置' }));
+    expect(screen.getByRole('tab', { name: 'AGENTS 规则' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByTestId('project-agents-panel')).toHaveAttribute('data-project-id', 'project-1');
     expect(screen.queryByTestId('project-members-panel')).not.toBeInTheDocument();
     expect(screen.getAllByText('另一个项目的审批资料').length).toBeGreaterThan(0);
@@ -753,11 +756,11 @@ describe('AdminPage', () => {
     const projectWorkspace = screen.getByTestId('project-create-profile-workspace');
     const profile = screen.getByTestId('project-profile-card');
 
-    expect(projectListCard).not.toHaveClass('h-full');
-    expect(projectListCard).toHaveClass('self-start');
-    expect(projectWorkspace).not.toHaveClass('min-[1400px]:items-stretch');
-    expect(profile).not.toHaveClass('h-full');
-    expect(screen.getByRole('complementary', { name: '项目导航' })).toContainElement(screen.getByTestId('my-projects-card'));
+    expect(projectListCard).toHaveAttribute('data-secondary', 'catalog');
+    const myProjects = screen.getByTestId('my-projects-card');
+    expect(myProjects).toHaveAttribute('data-priority', 'primary');
+    expect(screen.getByRole('complementary', { name: '项目导航' }).firstElementChild).toBe(myProjects);
+    expect(within(myProjects).getByRole('button', { name: /智慧大脑agent/ })).toHaveAttribute('aria-current', 'true');
   });
 
   it('loads the global project catalog for a system administrator without direct project memberships', async () => {

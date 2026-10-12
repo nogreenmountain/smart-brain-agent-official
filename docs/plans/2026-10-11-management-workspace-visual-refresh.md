@@ -25,4 +25,10 @@
 
 ## 验证记录
 
-本地候选已验证，详见 `docs/tasks/2026-10-11-management-workspace-visual-refresh.md` 和 `.artifacts/management-workspace-visual-refresh-20261011/`。本轮未提交、未推送、未部署。
+本地候选已验证，详见 `docs/tasks/2026-10-11-management-workspace-visual-refresh.md` 和 `.artifacts/management-workspace-visual-refresh-20261011/`。视觉刷新原版本已部署；2026-10-12 AGENTS 入口回归修复已完成生产发布并通过静态资源终验。
+
+## 2026-10-12 回归修复补充
+
+- 保持 `AGENTS 规则` tab 的兼容文案，在概览页增加 `AGENTS.md 设置` 显式入口，避免设置能力只靠用户发现 tab。
+- 删除详情卡 `min-height: 100%` 覆盖，防止布局空白扩大。
+- 验证：管理页/AGENTS 组件 52 项、Next build、fixture QA 通过；生产发布已完成；已核对 `/admin` 静态 chunk 与入口标记，真实成员登录后的点击闭环仍未核对。
