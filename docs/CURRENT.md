@@ -238,8 +238,15 @@
 
 ## 2026-10-11 18:06 管理工作台视觉刷新再次核对，生产仍受 Docker 容量门禁阻断
 
-核对时间：2026-10-11 18:05–18:06（Asia/Shanghai）。发布记录已提交并推送（46d0112）。生产 Docker 可用空间 42,743,386,112 字节，约 39.82 GiB，仍低于 40 GiB 硬储备线；备份 timer ctive/waiting/success、无 maintenance.pending、内存和其他数据盘通过。未执行构建、候选容器创建或生产切换，生产主前端仍为 85f21545e254… / sha256:743d5093f6c4…，API/edge 未变。禁止通过 prune、删历史镜像/容器/日志/parts 或迁移数据绕过门禁。详见 [发布记录](releases/management-workspace-visual-refresh-20261011-r1.md)。
+核对时间：2026-10-11 18:05–18:06（Asia/Shanghai）。发布记录已提交并推送（46d0112）。生产 Docker 可用空间 42,743,386,112 字节，约 39.82 GiB，仍低于 40 GiB 硬储备线；备份 timer activective/waiting/success、无 maintenance.pending、内存和其他数据盘通过。未执行构建、候选容器创建或生产切换，生产主前端仍为 85f21545e254… / sha256:743d5093f6c4…，API/edge 未变。禁止通过 prune、删历史镜像/容器/日志/parts 或迁移数据绕过门禁。详见 [发布记录](releases/management-workspace-visual-refresh-20261011-r1.md)。
 
 ## 2026-10-11 18:11 管理工作台视觉刷新生产只读终态核对
 
-核对时间：2026-10-11 18:11（Asia/Shanghai）。因 Docker 39.82 GiB 仍低于 40 GiB 门禁，本次没有生产切换。现网 /login、/wiki、/admin、/workday、/health/ready 均 200，匿名 Key/用量接口 401；前端 85f21545e254…、API 621935d93b37…、edge 72614f0f738… 的 ID、镜像、启动时间保持不变。现网健康核对不等于本次视觉改动已部署。
+核对时间：2026-10-11 18:11（Asia/Shanghai）。因 Docker 39.82 GiB 仍低于 40 GiB 门禁，本次没有生产切换。现网 /login、/wiki、/admin、/workday、/health/ready 均 200，匿名 Key/用量接口 401；前端 85f21545e254…、API 621935d93b37…、edge f72614f0f738… 的 ID、镜像、启动时间保持不变。现网健康核对不等于本次视觉改动已部署。
+
+
+## 2026-10-12 10:04 管理工作台视觉刷新已清理容量并发布生产
+
+核对时间：2026-10-12 10:04（Asia/Shanghai）。按双锁清理明确无引用测试/构建对象，释放 `1,519,050,752` 字节（约 1.42 GiB），Docker 可用空间恢复至 `43,803,082,752` 字节（约 40.8 GiB）。未执行全局 prune，未删除运行中业务容器、业务数据、日志、备份、ClickHouse parts 或历史证据。候选镜像 `smartbrain-management-workspace-frontend:2026.10.12-r6`（SHA `6dc4244535c7…`）构建及候选页面核对通过。
+
+生产仅切换管理工作台前端：新容器 `32aaa12fcdd962589a957d845198db71f9e9185cf020fc7958b0730aebdcb346`，旧版本保留为停止回退容器 `smartbrain-agentops-dashboard-rollback-20261012-r2`。API `621935d93b37…` 和 edge `f72614f0f738…` 的 ID、镜像、启动时间保持不变。生产 `/login`、`/wiki`、`/admin`、`/workday`、`/health/ready` 均 200，匿名 Key/用量接口均 401，backup 登记 20 且无 maintenance pending。真实登录后的成员数据视觉浏览器验收未核对，仍以本地 fixture 证据为准。
