@@ -19,7 +19,7 @@
 - 本任务未提交修改及保存方式：既有 `docs/CURRENT.md`、`docs/tasks/2026-10-12-ai-work-record-projection.md` 等 dirty 修改保留；只提交本任务文件。
 - 既有其他任务修改：不归入本任务，提交前按路径审查。
 - Git 提交、审查与推送状态：提交 `2d0ee2e535d5d55f9c0bcdc41da3af0cb86ce681` 已推送 `official/codex/project-memory-no-adapter`；Windows 本地 relay 脚本不在该仓库
-- 关联发布记录／最近生产核对时间：[personal-api-relay-auth-20261017-r1](../releases/personal-api-relay-auth-20261017-r1.md)；生产只读核对 2026-10-17 16:20。
+- 关联发布记录／最近生产核对时间：[personal-api-relay-auth-20261017-r1](../releases/personal-api-relay-auth-20261017-r1.md)；生产只读核对至 2026-10-17 17:13。
 
 ## 已完成与未完成
 
