@@ -65,3 +65,4 @@
 - Windows 启动链修正已在现场验证：`start-services.test.ps1` 4/4 通过，Node relay 与 gateway 回归 26/26 通过。解析器只读取 `access.api-keys`，实际值仅核对长度/脱敏前缀/哈希；脚本 SHA 为 `55e33f25…`，测试 SHA 为 `1fc02378…`，代理脚本 SHA `f5487503…`。
 - 旧 relay PID `24220` 与 backend PID `26204` 未重启。9000 有一条自启动后持续的已建立连接，按在途长流处理；强制重启会丢连接，故未执行。新脚本只会在下次安全启动时加载正确 CPA Key。
 - 17:00:41 生产门禁刷新仍显示旧 personal gateway；backup Invocation `af6faabf…` failed/exit-code，备份储备短约 6.38 GiB，维护锁与备份锁存在。生产切换、清理、备份重放、真实 Key smoke 均未执行。
+- 07:08Z 的六条脱敏 `upstream_response_error` 401 发生在 Windows 已完成个人 authorize、转发到本机 3000 之后；无效/匿名个人 Key 在 authorize 前直接 401 且不产生该日志。它们证明了“下游内部 CPA Key 选错”的第二层根因，不能当作新代理已修复的证据。

@@ -26,7 +26,7 @@
 | 项目 | 状态 | 证据或说明 |
 |---|---|---|
 | 9000 与公网 401 复现 | 已完成 | 只读 probe 与生产聚合；不输出 Key、正文或原始日志 |
-| 根因定位 | 已完成 | 当前代理剥离 Authorization；Windows relay 要求个人 Bearer 并替换为 CPA Key |
+| 根因定位 | 已完成 | 两层根因均已确认：个人代理剥离 Authorization；Windows relay 的旧启动脚本用全局列表正则误取插件标签 `Executor` 而非 `access.api-keys`，导致授权通过后的 3000 下游 401；07:08Z 的 `upstream_response_error` 正属于后者 |
 | relay/opaque 代码与测试 | 已验证 | 本地 shim/ASGI 37 passed；候选镜像网络隔离回归 52 passed；source SHA `075b6501…` |
 | 候选镜像与显式配置 | 已验证 | candidate r6 image `sha256:28cd0714…`；import probe `relay-config-ok`；显式 mode/URL 仅在候选验证中使用 |
 | 生产发布 | 受阻 | current CID `7e700797…` 保持；`smartbrain-backup.service` 最新 Invocation `af6faabf…` 为 failed/exit-code，容量门禁未恢复；`/run/lock/smartbrain-maintenance.lock` 仍存在；未切换 |
