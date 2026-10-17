@@ -4,7 +4,7 @@
 
 - 任务编号：`personal-api-relay-auth-20261017`
 - 负责人／集成负责人：Codex
-- 创建／更新时间：2026-10-17；最后核对 17:10（Asia/Shanghai）
+- 创建／更新时间：2026-10-17；最后核对 18:37（Asia/Shanghai）
 - 开发阶段：候选已验证，生产发布受备份终态门禁阻断
 - 部署范围：未部署；现网仍为旧 personal-key-api
 - 目标及可观察的验收标准：有效个人 Bearer 能经本地代理到 Windows 9000；9000 匿名仍为 401；个人 Key 不出现在最终模型下游；chat/responses/streaming 路径和 query/body 保持。
@@ -19,7 +19,7 @@
 - 本任务未提交修改及保存方式：既有 `docs/CURRENT.md`、`docs/tasks/2026-10-12-ai-work-record-projection.md` 等 dirty 修改保留；只提交本任务文件。
 - 既有其他任务修改：不归入本任务，提交前按路径审查。
 - Git 提交、审查与推送状态：提交 `2d0ee2e535d5d55f9c0bcdc41da3af0cb86ce681` 已推送 `official/codex/project-memory-no-adapter`；Windows 本地 relay 脚本不在该仓库
-- 关联发布记录／最近生产核对时间：[personal-api-relay-auth-20261017-r1](../releases/personal-api-relay-auth-20261017-r1.md)；生产只读核对至 2026-10-17 17:13。
+- 关联发布记录／最近生产核对时间：[personal-api-relay-auth-20261017-r1](../releases/personal-api-relay-auth-20261017-r1.md)；生产只读核对至 2026-10-17 18:36。
 
 ## 已完成与未完成
 
@@ -75,3 +75,10 @@
 - 当前 9000 PID `24220`（2026-10-17 15:08:18 启动）、3000 PID `26204` 保持；9000 存在自启动后持续的已建立连接。为避免杀掉在途长流，没有执行重启；因此新解析结果尚未进入运行进程，不能把 Windows 运行态称为已修复。
 - 生产 17:00:41 只读刷新：current unit/CID/image 与旧环境保持；backup Invocation `af6faabf…` 仍 `failed/exit-code`，备份盘短约 6.38 GiB，维护锁和备份锁均存在。没有清理、重放备份、生产切换或真实 Key 请求。
 - 证据：`.artifacts/personal-api-relay-auth-20261017/windows-start-services-test.json`、`windows-pre-restart.json`、`production-gate-refresh-20261017T170041+0800.json`。候选代码已由 `2d0ee2e` 推送；现网仍未注入 `SB_PERSONAL_UPSTREAM_AUTH_MODE`／`SB_PERSONAL_UPSTREAM_URL`。
+
+## 2026-10-17 18:36–18:37 上线前实时门禁
+
+- 生产 personal gateway 仍是旧 CID `7e700797…`／image `sha256:532a68da…`，unit active/running/enabled、RestartCount 0；两个 relay 环境变量均未注入。
+- backup service 仍为 `failed/exit-code`，Invocation `af6faabf…`，无 PID/Job；timer waiting。备份盘可用 339.481 GiB，而最新失败批次动态需求为 345.861 GiB，仍短约 6.380 GiB。四盘静态硬线虽通过，不能替代 `inactive/success` 的备份终态。
+- Windows 9000 PID `24220` 仍有 1 条 17:33:08 建立的连接；watchdog 每 10 秒轮询。连接未排空且未协调 watchdog，不能安全重启加载新 CPA Key。
+- 结论：当前不放行上线；没有执行重启、清理、备份重放或生产切换。证据：`.artifacts/personal-api-relay-auth-20261017/production-gate-readonly-20261017T183628+0800.json`、`windows-restart-gate-20261017T183709+0800.json`。

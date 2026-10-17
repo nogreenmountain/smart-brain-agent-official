@@ -7,7 +7,7 @@
 - 目标环境与精确对象：`smartbrain-personal-gateway-current.service` 当前 personal-key-api；Windows 受信中转 `http://192.168.10.146:9000`
 - 授权来源、范围和有效期：用户 2026-10-17 请求；仅个人 API 认证链路，未扩展 Key 数据模型、Windows 中转或模型服务
 - 状态：候选已验证；生产发布受备份终态门禁阻断
-- 记录更新时间／最后现场核对时间：2026-10-17 17:10（Asia/Shanghai）
+- 记录更新时间／最后现场核对时间：2026-10-17 18:37（Asia/Shanghai）
 - 预期行为：本地认证成功的个人 Bearer 只到受信 9000；9000 再换成内部 CPA 凭据；个人 Key 不到最终模型服务
 
 ## 发布前后版本清单
@@ -66,3 +66,9 @@
 - 旧 relay PID `24220` 与 backend PID `26204` 未重启。9000 有一条自启动后持续的已建立连接，按在途长流处理；强制重启会丢连接，故未执行。新脚本只会在下次安全启动时加载正确 CPA Key。
 - 17:00:41 生产门禁刷新仍显示旧 personal gateway；backup Invocation `af6faabf…` failed/exit-code，备份储备短约 6.38 GiB，维护锁与备份锁存在。生产切换、清理、备份重放、真实 Key smoke 均未执行。
 - 07:08Z 的六条脱敏 `upstream_response_error` 401 发生在 Windows 已完成个人 authorize、转发到本机 3000 之后；无效/匿名个人 Key 在 authorize 前直接 401 且不产生该日志。它们证明了“下游内部 CPA Key 选错”的第二层根因，不能当作新代理已修复的证据。
+
+## 18:36–18:37 上线前门禁复核
+
+- Ubuntu 现网仍是旧 personal gateway，两个 relay 环境变量缺失；backup service 仍 failed，备份盘相对最新动态需求短约 6.380 GiB。四盘静态门槛全过，不代表备份发布门禁通过。
+- Windows 9000 仍有一条 17:33:08 建立的连接；当前 PID 和脚本 SHA 保持。watchdog 正在运行，不能在连接未排空时强制重启，也不能与其 10 秒轮询并发手工启动。
+- 本次没有发布动作。恢复条件仍为：backup `inactive/success` 且容量充足、维护门禁通过、9000 连接排空并协调 watchdog 后单次重启，再执行 one-shot promote 和真实 Key smoke。
