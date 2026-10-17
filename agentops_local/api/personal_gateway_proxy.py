@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from functools import partial
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 import anyio
@@ -41,10 +42,56 @@ from agentops.ai_usage.request_project import agents_instructions, project_from_
 from agentops.rag.authz import AuthzError, require_member
 
 logger = logging.getLogger(__name__)
-UPSTREAM_BASE_URL = os.getenv("SB_PERSONAL_UPSTREAM_URL", "http://192.168.10.146:9000").rstrip("/")
+
+
+def normalize_upstream_base_url(value: str) -> str:
+    """Normalize a configured upstream root, accepting an optional ``/v1``.
+
+    The proxy owns the protocol prefix and appends exactly one ``/v1`` when it
+    builds a request.  Reject credentials, query strings, fragments, and
+    non-http schemes so a malformed setting cannot turn into an accidental
+    credential-bearing redirect or URL.
+    """
+    raw = str(value or '').strip().rstrip('/')
+    parsed = urlsplit(raw)
+    if parsed.scheme not in {'http', 'https'} or not parsed.netloc:
+        raise ValueError('SB_PERSONAL_UPSTREAM_URL must be an absolute http(s) URL')
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError('SB_PERSONAL_UPSTREAM_URL must not contain credentials')
+    if parsed.query or parsed.fragment:
+        raise ValueError('SB_PERSONAL_UPSTREAM_URL must not contain query or fragment')
+    path = parsed.path.rstrip('/')
+    if path == '/v1':
+        path = ''
+    return urlunsplit((parsed.scheme, parsed.netloc, path, '', ''))
+
+
+def build_upstream_url(base_url: str, upstream_path: str) -> str:
+    """Build a single-versioned upstream URL from a request path."""
+    path = upstream_path or '/'
+    if not path.startswith('/'):
+        path = '/' + path
+    return f"{normalize_upstream_base_url(base_url)}/v1{path}"
+
+
+UPSTREAM_BASE_URL = normalize_upstream_base_url(
+    os.getenv("SB_PERSONAL_UPSTREAM_URL", "http://192.168.10.146:9000")
+)
 UPSTREAM_TIMEOUT_SECONDS = float(os.getenv("SB_PERSONAL_UPSTREAM_TIMEOUT_SECONDS", "120"))
 MAX_STREAM_SECONDS = float(os.getenv('SB_PERSONAL_MAX_STREAM_SECONDS', '1800'))
 MAX_STREAM_RECORD_BYTES = 16 * 1024 * 1024
+# The historical proxy treated every upstream as an opaque model endpoint and
+# therefore removed the personal Authorization header.  The Windows relay at
+# 192.168.10.146:9000 is now a SmartBrain-authenticated hop, so its mode must
+# be explicit.  Keep the old opaque behavior only when the setting is absent;
+# an explicitly empty or unknown value fails closed.
+_configured_auth_mode = os.environ.get("SB_PERSONAL_UPSTREAM_AUTH_MODE")
+UPSTREAM_AUTH_MODE = (
+    "opaque" if _configured_auth_mode is None
+    else _configured_auth_mode.strip().lower()
+)
+UPSTREAM_AUTH_MODES = frozenset({"opaque", "smartbrain_relay"})
+TRUSTED_SMARTBRAIN_RELAY_URL = "http://192.168.10.146:9000"
 
 
 @dataclass(frozen=True)
@@ -92,6 +139,9 @@ class GatewayRuntime:
 
 @asynccontextmanager
 async def gateway_lifespan(app):
+    # Refuse to start when the authentication mode is missing/invalid (an
+    # absent variable intentionally resolves to the legacy opaque mode above).
+    _validate_upstream_configuration()
     active = int(os.getenv('SB_PERSONAL_MAX_ACTIVE', '8'))
     waiting = int(os.getenv('SB_PERSONAL_MAX_WAITING', '24'))
     timeout = float(os.getenv('SB_PERSONAL_QUEUE_TIMEOUT_SECONDS', '60'))
@@ -142,22 +192,115 @@ HOP_BY_HOP_HEADERS = {
     "content-length",
 }
 
+# These headers are credentials or caller-controlled project claims.  They
+# must never reach an upstream model/relay.  In relay mode the one exception is
+# the canonical Authorization value that was validated by this gateway before
+# queue admission; it is added explicitly below.
+FORBIDDEN_UPSTREAM_CREDENTIAL_HEADERS = {
+    "authorization",
+    "proxy-authorization",
+    "api-key",
+    "x-api-key",
+    "x-openai-api-key",
+    "x-litellm-api-key",
+    "x-smartbrain-api-key",
+    "x-smartbrain-gateway-api-key",
+    "x-gateway-api-key",
+    "x-goog-api-key",
+    "x-azure-api-key",
+    "x-azure-openai-api-key",
+    "cookie",
+    "x-smartbrain-project-context",
+    "x-smartbrain-project-id",
+}
+
 
 def bearer_token(headers: Any) -> str:
-    value = headers.get("authorization", "")
+    value = _header_value(headers, "authorization")
     if not value.lower().startswith("bearer ") or not value.split(" ", 1)[1].strip():
         raise HTTPException(status_code=401, detail="Gateway API key required")
     return value.split(" ", 1)[1].strip()
 
 
-def upstream_headers(headers: Any) -> dict[str, str]:
-    """Copy client headers without forwarding the personal credential."""
+def _header_value(headers: Any, name: str) -> str:
+    """Read a header case-insensitively from Starlette or plain mappings."""
+    wanted = name.lower()
+    for key, value in headers.items():
+        if str(key).lower() == wanted:
+            return str(value)
+    return ""
+
+
+def _validated_upstream_auth_mode(auth_mode: str | None = None) -> str:
+    mode = UPSTREAM_AUTH_MODE if auth_mode is None else auth_mode
+    mode = mode.strip().lower() if isinstance(mode, str) else ""
+    if mode not in UPSTREAM_AUTH_MODES:
+        raise ValueError("SB_PERSONAL_UPSTREAM_AUTH_MODE must be opaque or smartbrain_relay")
+    return mode
+
+
+def _validate_upstream_configuration() -> str:
+    mode = _validated_upstream_auth_mode()
+    normalized_base = normalize_upstream_base_url(UPSTREAM_BASE_URL)
+    if mode == "smartbrain_relay" and normalized_base != TRUSTED_SMARTBRAIN_RELAY_URL:
+        raise ValueError(
+            "smartbrain_relay requires the trusted SmartBrain relay at "
+            f"{TRUSTED_SMARTBRAIN_RELAY_URL}"
+        )
+    return mode
+
+
+def _validate_upstream_target(url: str, *, auth_mode: str | None = None) -> str:
+    """Validate the concrete URL before a credential-bearing relay request.
+
+    The normal route builds this URL from ``UPSTREAM_BASE_URL``.  Keeping the
+    check here as well prevents a future caller of ``_upstream_request`` from
+    accidentally sending a validated personal credential to an arbitrary
+    host, even if the global configuration still points at the trusted relay.
+    """
+    mode = _validated_upstream_auth_mode(auth_mode)
+    parsed = urlsplit(str(url))
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("upstream request URL must not contain credentials")
+    if parsed.query or parsed.fragment:
+        raise ValueError("upstream request URL must not contain query or fragment")
+    if mode == "smartbrain_relay":
+        if parsed.scheme + "://" + parsed.netloc != TRUSTED_SMARTBRAIN_RELAY_URL:
+            raise ValueError("smartbrain_relay request must target the trusted relay")
+        path = parsed.path.rstrip("/")
+        if path != "/v1" and not path.startswith("/v1/"):
+            raise ValueError("smartbrain_relay request must target the /v1 API")
+    return mode
+
+
+def upstream_headers(
+    headers: Any,
+    *,
+    auth_mode: str | None = None,
+    validated_authorization: str | None = None,
+) -> dict[str, str]:
+    """Copy safe transport headers and apply the explicit upstream auth mode.
+
+    ``validated_authorization`` may only be supplied by the request path after
+    ``bearer_token`` and the database claim check have succeeded.  It is kept
+    separate from the raw header map so relay mode cannot accidentally forward
+    a caller-injected credential header.
+    """
+    mode = _validated_upstream_auth_mode(auth_mode)
     result = {
         key: value
         for key, value in headers.items()
         if key.lower() not in HOP_BY_HOP_HEADERS
-        and key.lower() not in {"authorization", "x-smartbrain-project-context", "x-smartbrain-project-id"}
+        and key.lower() not in FORBIDDEN_UPSTREAM_CREDENTIAL_HEADERS
     }
+    if mode == "smartbrain_relay":
+        original_authorization = _header_value(headers, "authorization")
+        if not validated_authorization or original_authorization != validated_authorization:
+            raise ValueError("smartbrain_relay requires validated authorization")
+        # Recheck the scheme at this boundary as defense in depth.  The normal
+        # request path already called bearer_token before this function.
+        bearer_token({"authorization": validated_authorization})
+        result["authorization"] = validated_authorization
     result["x-smartbrain-gateway-proxy"] = "personal-api"
     return result
 
@@ -385,6 +528,12 @@ def _save_event(orm, claim, event):
 
 
 async def proxy_request(request: Request) -> Response:
+    try:
+        _validate_upstream_configuration()
+    except ValueError as error:
+        raise HTTPException(503, 'gateway_upstream_auth_mode_invalid',
+                            headers={'Cache-Control': 'no-store'}) from error
+    validated_authorization = _header_value(request.headers, "authorization")
     bearer_token(request.headers)
     runtime = gateway_runtime(request)
     slots = AsyncExitStack()
@@ -402,7 +551,9 @@ async def proxy_request(request: Request) -> Response:
         await slots.enter_async_context(runtime.admission.slot(disconnected=request.is_disconnected))
         if await request.is_disconnected():
             raise HTTPException(499, 'gateway_client_disconnected')
-        response = await _proxy_admitted(request, runtime, body)
+        response = await _proxy_admitted(
+            request, runtime, body, validated_authorization=validated_authorization
+        )
         if isinstance(response, _GatewayStreamResponse):
             response.slots = slots.pop_all()
             transferred = True
@@ -415,18 +566,46 @@ async def proxy_request(request: Request) -> Response:
             await slots.aclose()
 
 
-async def _upstream_request(request, runtime, url, body, *, streaming=False):
+async def _upstream_request(
+    request,
+    runtime,
+    url,
+    body,
+    *,
+    streaming=False,
+    validated_authorization: str | None = None,
+):
+    auth_mode = _validate_upstream_configuration()
+    try:
+        _validate_upstream_target(url, auth_mode=auth_mode)
+    except ValueError as error:
+        # A target mismatch is an internal configuration/route error.  Turn it
+        # into the same bounded upstream failure path as other transport
+        # errors instead of allowing a raw ValueError to become an opaque 500.
+        raise httpx.InvalidURL(str(error)) from error
     stopped = asyncio.Event()
     async def watch():
         while not stopped.is_set() and not await request.is_disconnected():
             await asyncio.sleep(.05)
     if streaming:
         outgoing = runtime.client.build_request(request.method, url,
-            content=body, headers=upstream_headers(request.headers), params=request.query_params)
+            content=body,
+            headers=upstream_headers(
+                request.headers,
+                auth_mode=auth_mode,
+                validated_authorization=validated_authorization,
+            ),
+            params=request.query_params)
         call = runtime.client.send(outgoing, stream=True)
     else:
         call = runtime.client.request(request.method, url,
-            content=body, headers=upstream_headers(request.headers), params=request.query_params)
+            content=body,
+            headers=upstream_headers(
+                request.headers,
+                auth_mode=auth_mode,
+                validated_authorization=validated_authorization,
+            ),
+            params=request.query_params)
     model = asyncio.create_task(call)
     disconnect = asyncio.create_task(watch())
     try:
@@ -553,7 +732,13 @@ class _GatewayStreamResponse(StreamingResponse):
                         await self.slots.aclose()
 
 
-async def _proxy_admitted(request, runtime, request_body):
+async def _proxy_admitted(
+    request,
+    runtime,
+    request_body,
+    *,
+    validated_authorization: str | None = None,
+):
     try:
         request_payload = json.loads(request_body.decode('utf-8')) if request_body else {}
     except (UnicodeDecodeError, json.JSONDecodeError):
@@ -564,12 +749,19 @@ async def _proxy_admitted(request, runtime, request_body):
     upstream_path = request.url.path[len("/v1"):] or "/"
     if not upstream_path.startswith("/"):
         upstream_path = "/" + upstream_path
-    upstream_url = f"{UPSTREAM_BASE_URL}/v1{upstream_path}"
+    upstream_url = build_upstream_url(UPSTREAM_BASE_URL, upstream_path)
     started_at = datetime.now(timezone.utc)
     started_clock = time.monotonic()
     try:
         streaming = request_payload.get('stream') is True
-        upstream = await _upstream_request(request, runtime, upstream_url, request_body, streaming=streaming)
+        upstream = await _upstream_request(
+            request,
+            runtime,
+            upstream_url,
+            request_body,
+            streaming=streaming,
+            validated_authorization=validated_authorization,
+        )
     except (httpx.HTTPError, HTTPException, asyncio.CancelledError) as error:
         cancelled = isinstance(error, asyncio.CancelledError) or (
             isinstance(error, HTTPException) and error.status_code == 499)
