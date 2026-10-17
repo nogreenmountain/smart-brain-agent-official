@@ -7,7 +7,7 @@
 - 目标环境与精确对象：`smartbrain-personal-gateway-current.service` 当前 personal-key-api；Windows 受信中转 `http://192.168.10.146:9000`
 - 授权来源、范围和有效期：用户 2026-10-17 请求；仅个人 API 认证链路，未扩展 Key 数据模型、Windows 中转或模型服务
 - 状态：候选已验证；生产发布受备份终态门禁阻断
-- 记录更新时间／最后现场核对时间：2026-10-17 16:36（Asia/Shanghai）
+- 记录更新时间／最后现场核对时间：2026-10-17 17:10（Asia/Shanghai）
 - 预期行为：本地认证成功的个人 Bearer 只到受信 9000；9000 再换成内部 CPA 凭据；个人 Key 不到最终模型服务
 
 ## 发布前后版本清单
@@ -59,3 +59,9 @@
 ## 16:36 续核
 
 生产只读状态仍为旧 CID/image，当前 unit active/enabled；备份服务 `af6faabf…` 仍 failed/exit-code，timer waiting，维护锁仍在。没有执行切换、重启、清理、备份重放或真实 Key 请求。候选 r6 的 52 项回归与 relay 配置导入检查仍是本轮可用证据；发布后有效 Key smoke 必须由用户以现有原始 Key 受控执行，系统不会读取或输出 Key。
+
+## 17:02–17:10 接续核对
+
+- Windows 启动链修正已在现场验证：`start-services.test.ps1` 4/4 通过，Node relay 与 gateway 回归 26/26 通过。解析器只读取 `access.api-keys`，实际值仅核对长度/脱敏前缀/哈希；脚本 SHA 为 `55e33f25…`，测试 SHA 为 `1fc02378…`，代理脚本 SHA `f5487503…`。
+- 旧 relay PID `24220` 与 backend PID `26204` 未重启。9000 有一条自启动后持续的已建立连接，按在途长流处理；强制重启会丢连接，故未执行。新脚本只会在下次安全启动时加载正确 CPA Key。
+- 17:00:41 生产门禁刷新仍显示旧 personal gateway；backup Invocation `af6faabf…` failed/exit-code，备份储备短约 6.38 GiB，维护锁与备份锁存在。生产切换、清理、备份重放、真实 Key smoke 均未执行。
