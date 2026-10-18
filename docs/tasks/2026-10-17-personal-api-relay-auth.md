@@ -104,3 +104,18 @@ Windows 候选 16/16、PS 启动/防火墙/Prepare/Apply-Rollback/迟到连接�
 Linux 全新身份 `personal-api-public-only-20261018-r1` 工具本地62项通过，加入原网关 active/waiting/DB 双采样零值停止门槛、direct403/marked401/管理403及自然成功凭据指纹验收；远端尚未安装或切换。当前个人 CID `7e700797…`/image `532a68da…`/StartedAt `2026-10-17T13:44:51.228032986Z` 保持。19:29 原42条个人 Key 聚合指纹 `ff1303631e132bee1c6bd06334c410db` 已保存；active/waiting/DB均0。保留的TCP连接约50分钟无数据，只有两端无活动请求、队列为零、无3000连接和至少10秒字节计数稳定同时满足才允许作为 idle retained connection 安全关闭。
 
 运行接续先观察上述备份及 Windows helper，勿重复 Prepare/Apply/start。完整个人 Key 公网成功及生产回退尚未验证；不能称已上线。详见[方案](../plans/2026-10-18-personal-api-public-only.md)、[发布](../releases/personal-api-public-only-20261018-r1.md)。
+
+
+## 2026-10-18 20:08 备份与提权等待接续
+
+19:52–20:06 对同一 Invocation `11735eb839e54c2b8799b3d424cbfd80` 只读观察，models 归档从2.981GB增长至6.015GB，备份仍 activating/start，未启动第二批。20:01 Docker40.09GiB、backups325.17GiB。原 elevated helper29948已在30分钟上限退出，错误为 `Backup gate not ready; no Apply`；20:08确认状态仍Prepared。新 `apply-windows-prepared-continuation.ps1` 仅接续原state-r1d，拒绝原helper仍在或状态非Prepared，保留原SHA检查、原三规则ID及单次Apply；未重跑Prepare。新进程需Windows再次UAC，目前等待系统批准。业务容器/9000尚未切换。
+
+
+## 2026-10-18 20:33 备份完成，Windows 单次切换后收尾等待提权
+
+- 原备份 Invocation `11735eb839e54c2b8799b3d424cbfd80` 成功结束，MainPID/ControlPID/Job清零，批次 `/srv/smartbrain-backups/backups/20261018T112315Z`；36项自校验与29个小文件独立SHA核验通过，登记20，四盘静态门槛通过。凭据在 `.artifacts/personal-api-public-only-20261018-r1/fresh-backup-receipt.json`；online不代表冻结恢复通过。
+- 20:11用户重新批准UAC后，helper29688沿用原Prepared状态；备份成功后已收窄三条宽规则、启用精确`.165→.146:9000/TCP`规则，保存原日志、停止旧relay一次并启动新PID31076（StartTimeUTC `2026-10-18T12:25:49.9930121Z`）。backend26204保持；watchdog目前Disabled，state仍`OldRelayStopped`。
+- 原Start-RelayOnce的`Start-Process -Wait`等待整个后代进程树，starter22804已退出但helper29688仍等待常驻Node，故未进入收尾。真实隔离复现StarterReturned=false；结束仅测试waiter后后台child保持。源码改为Process.WaitForExit，只等starter；新真实测试StarterReturned=true/child保持，Apply/rollback夹具通过、Python66项通过。原在运行helper使用旧已加载源码，不会自动取得修复。
+- netsh将单IP呈现为相同起止范围（`.146-.146`、`.165-.165`），读回工具新增严格单IP归一化，接受裸IP、/32、相等起止，拒绝更宽网络/范围；未为迎合核验更改防火墙。
+- 新`settle-windows-existing-relay.ps1`仅允许确切helper29688/StartTime12:11:41.0050689Z与relay31076/StartTime12:25:49.9930121Z、原backend、当前源码与三规则身份全部通过后，结束waiter一次、保留relay、恢复原watchdog、双轮询后标Applied。UAC返回用户取消，脚本未执行，仍需用户批准；无第二次relay重启。
+- 下一步：重新批准并运行该收尾脚本（不得重跑Prepare/Apply或旧固定SHA continuation），读回Applied及watchdog，再执行deploy包collect_windows_receipt.py、两份凭据通过后一次性promote_remote.py，真实公网完成事件通过后finalize。Linux新发布尚未执行，原个人CID7e700797/Key42行指纹保持基线；尚未重新核对有效Key公网成功。

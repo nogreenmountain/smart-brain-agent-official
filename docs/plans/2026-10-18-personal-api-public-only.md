@@ -11,7 +11,7 @@
 - r4 的“direct 9000 与 public 同时 200”契约与目标冲突，废止且不执行；使用新的发布身份。
 - Windows relay 的 AI 路径必须同时满足：TCP 来源为生产服务器 `192.168.10.165`，且请求含 personal gateway 固定内部标记。个人 Key 仍由原 SmartBrain authorize 路径验证，随后只在 Windows loopback hop 换成原 CPA 内部 Key。
 - Windows relay 的 `/`、`/panel`、`/management.html`、`/v0/*` 和 `/v8/management/*` 仅允许 loopback；生产主机和其他局域网来源不得访问。
-- Windows 防火墙先精确允许 `192.168.10.165 -> 192.168.10.146:9000/TCP`，再禁用两条 RemoteAddress=Any 的旧 9000 规则。默认入站 Block；不添加会覆盖 Allow 的显式全局 Block。
+- Windows 防火墙先精确允许 `192.168.10.165 -> 192.168.10.146:9000/TCP`，再禁用两条 RemoteAddress=Any 的旧 9000 规则，以及一条精确绑定当前 Node 可执行文件的宽 TCP 规则（合计三条，以 Prepared 状态中规则 ID 为准）。默认入站 Block；不添加会覆盖 Allow 的显式全局 Block。
 - 不要求用户把个人 Key 输入 Codex 终端。有效 Key 的最终确认只通过用户日常客户端的公网地址或后继自然流量；证据不保存 Key、正文或响应正文。
 
 ## 阶段 1 — 候选与回归

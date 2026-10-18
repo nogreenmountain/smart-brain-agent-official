@@ -1,3 +1,7 @@
+## 2026-10-18 20:33 个人 API 发布：备份成功，Windows 收尾等待提权
+
+原online备份`11735eb8…`成功，36项自校验/29小文件独立SHA通过。Windows防火墙已收窄，新relay PID31076于20:25单次启动，backend26204保持；发布waiter29688因Start-Process -Wait等待常驻子进程而未退出，watchdog暂Disabled，state OldRelayStopped。隔离复现并修复发布等待逻辑；仅结束waiter、保留relay并恢复watchdog的收尾脚本已准备，但UAC返回用户取消，尚未执行。Linux个人网关尚未切换；有效原Key公网请求尚未验收，不能称上线完成。接续先核对上述原进程/状态，严禁重放Prepare、Apply、备份或旧r1–r4发布。详见[任务](tasks/2026-10-17-personal-api-relay-auth.md)和[发布](releases/personal-api-public-only-20261018-r1.md)。
+
 ## 2026-10-18 19:38 个人 API 公网唯一入口发布准备中
 
 用户已废止 r4 终端输入 Key 方案；仅保留公网个人 API＋原个人 Key，9000 转为内部 hop。19:21 已核对并清理三批正式归档的冗余 staging，释放30.887 GiB；19:23 新 online backup Invocation `11735eb8…`／PID3011428 正在运行，19:38未终态，不重跑。用户已允许 UAC，Windows有限helper PID29948/state windows-state-r1d已Prepared，等待该备份成功再执行单次边界切换；Linux新发布身份尚未执行。原个人CID7e700797/image532a68da保持，Key数据未改，公网有效Key成功尚未验收。[任务](tasks/2026-10-17-personal-api-relay-auth.md)、[新方案](plans/2026-10-18-personal-api-public-only.md)、[发布](releases/personal-api-public-only-20261018-r1.md)。下方r4等待Key的内容仅为历史，不再执行。

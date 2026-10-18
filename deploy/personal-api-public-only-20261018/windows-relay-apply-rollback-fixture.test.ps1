@@ -69,7 +69,9 @@ function Start-Process {
     $global:relayStart = ([datetime]'2026-10-18T11:00:00Z').AddMinutes($global:startCount)
     $global:relayExists = $true
     $global:operationLog.Add("StartRelay:$($global:relayPid)")
-    return [pscustomobject]@{ ExitCode=0 }
+    $process = [pscustomobject]@{ ExitCode=0 }
+    $process | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { }
+    return $process
 }
 
 function Start-Sleep { param([int]$Seconds, [int]$Milliseconds) }

@@ -2,6 +2,7 @@
 import hashlib,json,pathlib,subprocess,sys,time,urllib.request,urllib.error
 from datetime import datetime,timezone
 import relay_release_core as core
+from windows_firewall_receipt import exact_ipv4_filter
 HERE=pathlib.Path(__file__).resolve().parent
 ROOT=HERE.parents[1]
 EVIDENCE=ROOT/'.artifacts/personal-api-public-only-20261018'
@@ -41,7 +42,9 @@ node=[r for r in rules('node.exe') if r.get('Program','').lower()==r'c:\users\te
 assert len(node)==1 and node[0]['Enabled']=='No'
 exact=rules('SmartBrain Personal API 9000 from 192.168.10.165 (personal-api-public-only-20261018-r1)')
 assert len(exact)==1
-assert all(exact[0].get(k)==v for k,v in {'Enabled':'Yes','Direction':'In','Action':'Allow','LocalIP':'192.168.10.146','RemoteIP':'192.168.10.165','LocalPort':'9000','Protocol':'TCP'}.items())
+assert all(exact[0].get(k)==v for k,v in {'Enabled':'Yes','Direction':'In','Action':'Allow','LocalPort':'9000','Protocol':'TCP'}.items())
+assert exact_ipv4_filter(exact[0].get('LocalIP',''),'192.168.10.146')
+assert exact_ipv4_filter(exact[0].get('RemoteIP',''),'192.168.10.165')
 def status(url):
  try:
   with urllib.request.urlopen(url,timeout=8) as r:return r.status

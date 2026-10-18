@@ -6,8 +6,8 @@
 - 发布负责人／验证人：Codex
 - 目标环境：Windows `192.168.10.146:9000` relay 与 `smartbrain-personal-gateway-current.service`
 - 授权来源：用户 2026-10-18 明确要求关闭 9000 员工直连，只保留公网个人 API 加个人 Key，并要求今天上线。
-- 状态：候选与发布工具已验证；已清理确证冗余副本并启动新备份，Windows 已 Prepared；应用服务尚未切换。
-- 最后现场核对：2026-10-18 19:47（Asia/Shanghai）。
+- 状态：新 online 备份成功；Windows 防火墙已收窄且新 relay 已启动，等待提权完成 watchdog 收尾；Linux 个人网关尚未切换。
+- 最后现场核对：2026-10-18 20:33（Asia/Shanghai）。
 
 ## 发布前后版本清单
 
@@ -29,7 +29,7 @@
 |---|---|---|---|
 | 1 | 复现现状 | 只读核对监听、peer、防火墙和入口 | 已完成：9000 Any/Any，管理面匿名 LAN 200；生产源 `.165` |
 | 2 | 候选回归 | Node 与 PowerShell 测试、临时端口隔离验证 | Node16、Python发布工具64、PS边界/回退/空闲证明通过；应用服务未变更 |
-| 3 | Windows 边界 | 备份、安装、单次重启、恢复 watchdog | 未执行 |
+| 3 | Windows 边界 | 备份、安装、单次重启、恢复 watchdog | 防火墙与单次重启已执行；新PID31076；watchdog恢复待提权收尾 |
 | 4 | personal gateway | 新发布身份 one-shot promote | 未执行 |
 | 5 | 生产验收 | direct 拒绝、公网匿名401、有效 Key 公网成功、身份与回退绑定 | 未执行 |
 
@@ -60,3 +60,18 @@ Linux 全新身份 `personal-api-public-only-20261018-r1` 工具本地62项通�
 
 
 19:47：同一备份仍活动，models.tar.gz 1,998,323,712 bytes；Windows helper29948仍Prepared等待。Linux发布工具权威源码已整理至 `deploy/personal-api-public-only-20261018/`，最终64项离线测试通过，修复“回退时容器已经停止或生产名称暂空”情况下的排空检查；旧artifacts副本仅留证据，后续执行使用deploy包。
+
+
+## 2026-10-18 20:08 备份与提权等待接续
+
+19:52–20:06 对同一 Invocation `11735eb839e54c2b8799b3d424cbfd80` 只读观察，models 归档从2.981GB增长至6.015GB，备份仍 activating/start，未启动第二批。20:01 Docker40.09GiB、backups325.17GiB。原 elevated helper29948已在30分钟上限退出，错误为 `Backup gate not ready; no Apply`；20:08确认状态仍Prepared。新 `apply-windows-prepared-continuation.ps1` 仅接续原state-r1d，拒绝原helper仍在或状态非Prepared，保留原SHA检查、原三规则ID及单次Apply；未重跑Prepare。新进程需Windows再次UAC，目前等待系统批准。业务容器/9000尚未切换。
+
+
+## 2026-10-18 20:33 备份完成，Windows 单次切换后收尾等待提权
+
+- 原备份 Invocation `11735eb839e54c2b8799b3d424cbfd80` 成功结束，MainPID/ControlPID/Job清零，批次 `/srv/smartbrain-backups/backups/20261018T112315Z`；36项自校验与29个小文件独立SHA核验通过，登记20，四盘静态门槛通过。凭据在 `.artifacts/personal-api-public-only-20261018-r1/fresh-backup-receipt.json`；online不代表冻结恢复通过。
+- 20:11用户重新批准UAC后，helper29688沿用原Prepared状态；备份成功后已收窄三条宽规则、启用精确`.165→.146:9000/TCP`规则，保存原日志、停止旧relay一次并启动新PID31076（StartTimeUTC `2026-10-18T12:25:49.9930121Z`）。backend26204保持；watchdog目前Disabled，state仍`OldRelayStopped`。
+- 原Start-RelayOnce的`Start-Process -Wait`等待整个后代进程树，starter22804已退出但helper29688仍等待常驻Node，故未进入收尾。真实隔离复现StarterReturned=false；结束仅测试waiter后后台child保持。源码改为Process.WaitForExit，只等starter；新真实测试StarterReturned=true/child保持，Apply/rollback夹具通过、Python66项通过。原在运行helper使用旧已加载源码，不会自动取得修复。
+- netsh将单IP呈现为相同起止范围（`.146-.146`、`.165-.165`），读回工具新增严格单IP归一化，接受裸IP、/32、相等起止，拒绝更宽网络/范围；未为迎合核验更改防火墙。
+- 新`settle-windows-existing-relay.ps1`仅允许确切helper29688/StartTime12:11:41.0050689Z与relay31076/StartTime12:25:49.9930121Z、原backend、当前源码与三规则身份全部通过后，结束waiter一次、保留relay、恢复原watchdog、双轮询后标Applied。UAC返回用户取消，脚本未执行，仍需用户批准；无第二次relay重启。
+- 下一步：重新批准并运行该收尾脚本（不得重跑Prepare/Apply或旧固定SHA continuation），读回Applied及watchdog，再执行deploy包collect_windows_receipt.py、两份凭据通过后一次性promote_remote.py，真实公网完成事件通过后finalize。Linux新发布尚未执行，原个人CID7e700797/Key42行指纹保持基线；尚未重新核对有效Key公网成功。

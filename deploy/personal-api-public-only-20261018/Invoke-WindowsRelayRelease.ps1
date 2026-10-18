@@ -250,7 +250,10 @@ function Start-RelayOnce {
     }
     $process = Start-Process -FilePath 'powershell.exe' -ArgumentList @(
         '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"{0}"' -f $StartScript)
-    ) -Wait -PassThru -WindowStyle Hidden
+    ) -PassThru -WindowStyle Hidden
+    # Start-Process -Wait also waits for the intentionally persistent relay child.
+    # Wait only for the starter script, whose readiness checks have bounded loops.
+    $process.WaitForExit()
     if ($process.ExitCode -ne 0) { throw "start-services.ps1 failed with exit code $($process.ExitCode)" }
 }
 
