@@ -1,3 +1,21 @@
+## 2026-10-18 19:38 个人 API 公网唯一入口发布准备中
+
+用户已废止 r4 终端输入 Key 方案；仅保留公网个人 API＋原个人 Key，9000 转为内部 hop。19:21 已核对并清理三批正式归档的冗余 staging，释放30.887 GiB；19:23 新 online backup Invocation `11735eb8…`／PID3011428 正在运行，19:38未终态，不重跑。用户已允许 UAC，Windows有限helper PID29948/state windows-state-r1d已Prepared，等待该备份成功再执行单次边界切换；Linux新发布身份尚未执行。原个人CID7e700797/image532a68da保持，Key数据未改，公网有效Key成功尚未验收。[任务](tasks/2026-10-17-personal-api-relay-auth.md)、[新方案](plans/2026-10-18-personal-api-public-only.md)、[发布](releases/personal-api-public-only-20261018-r1.md)。下方r4等待Key的内容仅为历史，不再执行。
+
+## 2026-10-17 22:27 个人 API relay r1–r3 已安全回退，r4 等待本地隐藏 Key 输入（未上线）
+
+核对时间：2026-10-17 21:44:58–22:27（Asia/Shanghai）。r3 在 authenticated smoke 截止前未收到用户隐藏输入，已自动 `restored sequence=15`；旧生产 CID `7e700797…`／image `sha256:532a68da…` 正在运行，最新 StartedAt `2026-10-17T13:44:51.228032986Z`，current unit active，unit 与 inventory 均按 r3 rollback 备份恢复。21:46 只读复核公网 health/login 200、匿名 models/responses 401，backup inactive/success，两把发布锁可获取；r3 candidate 和失败新容器均停止。r1、r2、r3 的 promote/finalize/receipt/marker 均不可重放。
+
+r4 采用“先在 Codex PTY 以 `Read-Host -AsSecureString` 取 Key，再 promote”的独立发布身份；Key 不进入聊天、命令参数、环境变量或证据文件。r4 工具 97 passed，Python AST 16/16、PowerShell AST 4/4，独立审阅 GO；PID/StartTime/SessionId、唯一 `-File` wrapper、wrapper/helper/child SHA、5 分钟 ready TTL、随机 nonce 和 live cutover deadline 均 fail-closed。当前 r4 远端目录/stage/容器/unit 均不存在，runtime JSON 为 0，没有执行 r4 生产变更。下一步由用户在底部终端运行 `C:\Users\test\r4-key-input.cmd` 并隐藏输入现有 Key；ready marker 出现后才生成全新 r4 receipts、one-shot promote、认证 smoke 和 finalize。详见[任务](tasks/2026-10-17-personal-api-relay-auth.md)与[发布记录](releases/personal-api-relay-auth-20261017-r1.md)。
+
+## 2026-10-12 17:39 AI 工作记录精简投影已提交、推送并部署生产
+
+核对时间：2026-10-12 17:33:19 切换、17:36:23 终态、17:39:47 独立核验（Asia/Shanghai）。按用户“提交，推送，部署”授权，代码 `6e4cce2` 已推 `official/codex/project-memory-no-adapter`，主 API 新 CID `4e182829c424…`／image `sha256:60c99f8c9ff1…`、RestartCount 0；原名、IP/aliases、HostConfig保持。读侧工作记录保留用户输入与最后一条可见 AI 总结，过滤明确的 transcript/审批/工具运行时信封；知识库 materializer 仍使用原始 `event.messages`，无迁移、历史回写或删除。
+
+本地 8+8 passed；生产镜像实际 `_attach_messages()` 合成输入与 materializer AST 核验通过。公网 login/wiki/admin/workday/ready 200，匿名 records/keys 401；前端/edge代际保持，edge宿主/实际SHA `c22e68d9…` 一致；backup登记20，四盘门槛通过。旧API及候选停止/no保留；没有prune、业务批量重启、模型调用或重放到期夜间任务。首次候选脚本错误模块路径失败证据保留，修正检查后同镜像通过。
+
+真实成员登录页面闭环、完整PG/Wiki双写尚未核对（14 skipped），生产回退未执行；不称整链验收完成。详见[任务](tasks/2026-10-12-ai-work-record-projection.md)、[发布记录](releases/ai-work-record-projection-20261012-r1.md)及`.artifacts/ai-work-record-projection-20261012/`。旧CURRENT条目为各自核对时点的历史状态。
+
 ## 2026-10-12 16:00 AI 工作记录读侧投影候选已验证，进入受控发布
 
 核对时间：2026-10-12 16:00（Asia/Shanghai）。根因已确认：`ai_usage.py::_attach_messages()` 原先把 `public.ai_chat_messages` 中的 user/assistant 全量内容直接返回，导致 Codex transcript、工具调用、审批信封和中间过程进入工作记录界面。新增 `agentops_local/ai_usage/work_record_projection.py`，工作记录仅保留清理后的全部用户输入和最后一条可见 AI 总结；明确的环境上下文、transcript/approval runtime 信封及结构化审批回复被过滤，普通业务 JSON、`tool_call` 字段和相似业务文本保留。
@@ -265,3 +283,16 @@
 核对时间：2026-10-12 10:04（Asia/Shanghai）。按双锁清理明确无引用测试/构建对象，释放 `1,519,050,752` 字节（约 1.42 GiB），Docker 可用空间恢复至 `43,803,082,752` 字节（约 40.8 GiB）。未执行全局 prune，未删除运行中业务容器、业务数据、日志、备份、ClickHouse parts 或历史证据。候选镜像 `smartbrain-management-workspace-frontend:2026.10.12-r6`（SHA `6dc4244535c7…`）构建及候选页面核对通过。
 
 生产仅切换管理工作台前端：新容器 `32aaa12fcdd962589a957d845198db71f9e9185cf020fc7958b0730aebdcb346`，旧版本保留为停止回退容器 `smartbrain-agentops-dashboard-rollback-20261012-r2`。API `621935d93b37…` 和 edge `f72614f0f738…` 的 ID、镜像、启动时间保持不变。生产 `/login`、`/wiki`、`/admin`、`/workday`、`/health/ready` 均 200，匿名 Key/用量接口均 401，backup 登记 20 且无 maintenance pending。真实登录后的成员数据视觉浏览器验收未核对，仍以本地 fixture 证据为准。
+## 2026-10-17 16:36 个人 API 中转站认证适配候选完成，生产切换受备份/维护门禁阻断
+
+核对时间：2026-10-17 16:36（Asia/Shanghai）。根因已复现：Windows `192.168.10.146:9000/v1` 现在要求真实 SmartBrain 个人 Bearer，旧 personal proxy 在本地鉴权后删除 `Authorization`，导致直连与公网 `/v4/personal-api/v1/*` 均 401。候选 `smartbrain/personal-key-api:2026.10.17-relay-auth-r6`（image `sha256:28cd0714…`，源码 SHA `075b6501…`）显式支持 `smartbrain_relay`，仅把本地已验证 Bearer 交给受信 9000，由 Windows relay 换内部 CPA Key；JSON/Responses/Chat/流式及伪造项目/凭据头过滤回归 52 passed。
+
+生产仍旧 CID `7e700797…`／image `sha256:532a68da…`，unit active/enabled，未注入两个 `SB_PERSONAL_*` 变量。最新 backup Invocation `af6faabf…` 仍 failed/exit-code，备份储备不足约 6.38 GiB；`/run/lock/smartbrain-maintenance.lock` 文件存在但当时未核对 flock owner／竞争，文件存在本身不构成发布阻断。没有切换、重启、清理、备份重放或真实 Key 请求。详见[任务](tasks/2026-10-17-personal-api-relay-auth.md)、[方案](plans/2026-10-17-personal-api-relay-auth.md)和[发布记录](releases/personal-api-relay-auth-20261017-r1.md)。
+
+## 2026-10-17 17:10 个人 API relay 续核：脚本已修正，运行态与生产仍待门禁
+
+核对时间：17:02–17:17（Asia/Shanghai）。Windows `start-services.ps1` 已改为只读取 `access.api-keys` 的单一内部 CPA Key；PowerShell 4/4、Node relay/gateway 26/26 通过，Key 只核对长度/脱敏前缀/哈希。07:08Z 的脱敏 401 日志已确认属于 authorize 后误取 `Executor` 导致的 3000 下游错误；匿名/无效 Key 的入口 401 不产生该日志。当前 PID24220 的 9000 仍有一条自启动后保持的长连接，为保护在途流未强制重启，所以新脚本尚未进入运行进程。候选 Ubuntu 代码 `2d0ee2e535d5d55f9c0bcdc41da3af0cb86ce681` 已推送；生产 current 仍旧 CID/image，未注入两个 `SB_PERSONAL_*` 变量。17:13 前后只读门禁仍为 backup `af6faabf…` failed、备份储备短约6.38GiB；维护/备份锁文件存在但未核对 flock owner／竞争。没有生产切换、清理、重放备份或真实 Key 请求。证据见任务记录及 `.artifacts/personal-api-relay-auth-20261017/`。
+
+## 2026-10-17 18:37 个人 API relay 上线门禁仍未通过
+
+核对时间：18:36–18:37（Asia/Shanghai）。生产 personal gateway 仍是旧 CID/image，backup service 仍 `failed/exit-code`；备份盘可用339.481GiB，相对最新动态需求仍短约6.380GiB。Windows 9000 PID24220 仍有1条17:33:08建立的连接，watchdog正每10秒轮询；连接未排空时不强制重启。四盘静态硬线通过不替代备份成功终态。没有重启、清理、备份重放或生产切换；当前明确不放行上线。详见[任务](tasks/2026-10-17-personal-api-relay-auth.md)与[发布记录](releases/personal-api-relay-auth-20261017-r1.md)。
