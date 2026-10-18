@@ -6,15 +6,15 @@
 - 发布负责人／验证人：Codex
 - 目标环境：Windows `192.168.10.146:9000` relay 与 `smartbrain-personal-gateway-current.service`
 - 授权来源：用户 2026-10-18 明确要求关闭 9000 员工直连，只保留公网个人 API 加个人 Key，并要求今天上线。
-- 状态：新 online 备份成功；Windows 防火墙已收窄且新 relay 已启动，等待提权完成 watchdog 收尾；Linux 个人网关尚未切换。
-- 最后现场核对：2026-10-18 20:33（Asia/Shanghai）。
+- 状态：已上线并完成验收；promoted sequence14，2条真实公网完成请求，用户确认目标全部实现。
+- 最后现场核对：2026-10-18 22:53（Asia/Shanghai）。
 
 ## 发布前后版本清单
 
 | 组件 | 旧版本与身份 | 候选版本与身份 | 实际生效版本 | 证据 |
 |---|---|---|---|---|
-| Windows relay | `proxy-server.js` 监听 `0.0.0.0:9000`；PID476／Started 18:48:10；AI/管理面均可被 LAN 访问 | `deploy/personal-api-public-only-20261018/proxy-server.js`；AI 仅 `.165 + personal-api marker`，管理面仅 loopback | 未发布 | `.artifacts/personal-api-public-only-20261018/` |
-| personal-key-api | CID `7e700797…`／image `sha256:532a68da…` | image `sha256:28cd0714…`／source `075b6501…` | 未切换 | 2026-10-17 r6 候选证据；切换前须重核 |
+| Windows relay | `proxy-server.js` 监听 `0.0.0.0:9000`；PID476／Started 18:48:10；AI/管理面均可被 LAN 访问 | `deploy/personal-api-public-only-20261018/proxy-server.js`；AI 仅 `.165 + personal-api marker`，管理面仅 loopback | 已发布：PID31076，watchdog恢复 | `.artifacts/personal-api-public-only-20261018/` |
+| personal-key-api | CID `7e700797…`／image `sha256:532a68da…` | image `sha256:28cd0714…`／source `075b6501…` | 已切换：CID052676a8／image28cd0714 | 2026-10-18 r1终态与独立终验 |
 
 ## 数据与兼容性
 
@@ -28,10 +28,10 @@
 | 顺序 | 目标与前置条件 | 动作及预期 | 实际结果 |
 |---|---|---|---|
 | 1 | 复现现状 | 只读核对监听、peer、防火墙和入口 | 已完成：9000 Any/Any，管理面匿名 LAN 200；生产源 `.165` |
-| 2 | 候选回归 | Node 与 PowerShell 测试、临时端口隔离验证 | Node16、Python发布工具64、PS边界/回退/空闲证明通过；应用服务未变更 |
-| 3 | Windows 边界 | 备份、安装、单次重启、恢复 watchdog | 防火墙与单次重启已执行；新PID31076；watchdog恢复待提权收尾 |
-| 4 | personal gateway | 新发布身份 one-shot promote | 未执行 |
-| 5 | 生产验收 | direct 拒绝、公网匿名401、有效 Key 公网成功、身份与回退绑定 | 未执行 |
+| 2 | 候选回归 | Node 与 PowerShell 测试、临时端口隔离验证 | Node16、Python发布工具最终66、PS边界/回退/空闲证明与真实进程树测试通过 |
+| 3 | Windows 边界 | 备份、安装、单次重启、恢复 watchdog | 已完成；新PID31076保持，watchdog enabled/running，9000边界通过 |
+| 4 | personal gateway | 新发布身份 one-shot promote | 已执行一次，promoted sequence14，CID052676a8 |
+| 5 | 生产验收 | direct 拒绝、公网匿名401、有效 Key 公网成功、身份与回退绑定 | 2真实完成请求＋用户确认通过，42条Key/1051无关容器保持；生产实际回退未执行 |
 
 ## 回退
 
@@ -75,3 +75,33 @@ Linux 全新身份 `personal-api-public-only-20261018-r1` 工具本地62项通�
 - netsh将单IP呈现为相同起止范围（`.146-.146`、`.165-.165`），读回工具新增严格单IP归一化，接受裸IP、/32、相等起止，拒绝更宽网络/范围；未为迎合核验更改防火墙。
 - 新`settle-windows-existing-relay.ps1`仅允许确切helper29688/StartTime12:11:41.0050689Z与relay31076/StartTime12:25:49.9930121Z、原backend、当前源码与三规则身份全部通过后，结束waiter一次、保留relay、恢复原watchdog、双轮询后标Applied。UAC返回用户取消，脚本未执行，仍需用户批准；无第二次relay重启。
 - 下一步：重新批准并运行该收尾脚本（不得重跑Prepare/Apply或旧固定SHA continuation），读回Applied及watchdog，再执行deploy包collect_windows_receipt.py、两份凭据通过后一次性promote_remote.py，真实公网完成事件通过后finalize。Linux新发布尚未执行，原个人CID7e700797/Key42行指纹保持基线；尚未重新核对有效Key公网成功。
+
+
+## 2026-10-18 22:45 Windows收尾完成，Linux已切换，等待真实公网请求验收
+
+用户再次要求尽快上线。重新核对原PID/启动时间后经UAC恢复收尾：首版PS5.1因UTF8无BOM中文路径未找到状态；修正为PSScriptRoot相对解析。第二版在任何变更前因原watchdog XML省略默认Enabled=true而拒绝；只读确认当前XML仅多Enabled=false后规范化比较。最终22:42只结束确切waiter29688，relay31076/StartTime12:25:49.9930121Z及backend26204均保持；watchdog enabled/running，state Applied，未重复relay重启。三宽TCP规则disabled、精确`.165→.146:9000/TCP`allow均独立读回；LAN AI403、生产无marker403/marked匿名401、远程panel403、loopback panel200通过。
+
+同一成功备份Invocation11735eb8、36自校验/29小文件SHA、20登记和当前容量重新只读验证通过，未启动新备份。注意collect_backup_receipt中的completed_at为再次核验时间；真实服务终态由固定ExecMainExitTimestampMonotonic3564742433645与Invocation证明，不表示22:40重新备份完成。
+
+22:42:59仅一次执行新身份promote，unit `smartbrain-personal-public-only-promote-20261018-r1-20261018T144259Z`。22:43:22进入awaiting_smoke sequence13，新CID `052676a8caaff02578b73a25f10258da0d11350f164e4a94469d7912f2dae35e`／image28cd0714／source075b6501，current unit active/enabled，Invocation c1554993c4ba4e9c85ce6fa887082f5e，MainPID3571167。旧CID7e700797停止断网改名rollback保留，不能重放promote。真实请求验收截止22:58:22；未收到收据则原runner按既定流程回退，不延长或伪造验收。
+
+22:44独立核对1051无关容器配置和启动代际无变化，当前1054/39；网络、HostConfig、公网匿名401/login200及Windows边界通过；Key42行聚合指纹ff1303631e132bee1c6bd06334c410db保持。四盘可用字节Docker43005775872/root33054875648/backups345756135424/cold271549591552，MemAvailable8295817216。22:45网关health ok，active/waiting/DB0，最近小时尚无真实请求完成事件，不能称有效Key公网成功已验收。
+
+唯一接续：运行deploy包collect_natural_success.py只读汇总切换后真实完成请求；其成功时安装无Secret收据供原runnerfinalize。然后只读status确认promoted及collect_final_independent.py。不要重跑WindowsPrepare/Apply、备份start或Linuxpromote。
+
+
+## 2026-10-18 22:53 发布完成与独立终验
+
+用户确认日常客户端测试成功，并确认“员工关闭9000直连，仅使用公网个人API＋原个人Key”的目标全部实现。22:52:48服务端只读聚合确认切换后2条`personal_api`真实请求status200且content_complete，原42条Key聚合指纹`ff1303631e132bee1c6bd06334c410db`保持。收据只含请求摘要及计数，无Key或正文；原runner采纳后进入`promoted sequence=14`，22:53独立读回确认，未发生本次Linux发布回退。
+
+当前公网地址仍为 `https://39.105.79.0/v4/personal-api/v1`。新CID `052676a8caaff02578b73a25f10258da0d11350f164e4a94469d7912f2dae35e`，image `sha256:28cd0714f8ebdb214ad259444e4a9123b1d5d6ec4b89bf93fd48a40bd19e1cb1`，source `075b650186ad79cfec6b74eb8cb257ceabe8fee7426016f91308c1acb6cc09fe`；current unit active/running/enabled、Invocation `c1554993c4ba4e9c85ce6fa887082f5e`、MainPID3571167。原容器停止断网作为回退保留；新旧个人Key鉴权/归属/配额/撤销状态/历史记录/表结构未修改。
+
+Windows relay PID31076/StartedAt12:25:49.9930121Z与backend26204/StartedAt2026-10-17T07:08:16.5011949Z保持，3000仅loopback，watchdog enabled/running。卡住的waiter29688与收尾helper29912均已退出；未再次重启relay。个人9000直连403，生产内部marked匿名401，远程管理面403；公网匿名models/responses401、login200。端口9000保留为受限内部上游，不作为员工入口。
+
+1051无关容器Config/HostConfig hash、镜像、运行状态、启动时间及RestartCount全部保持；当前1054容器/39运行，个人网关三网络和HostConfig保持。原备份Invocation11735eb8在20:24:24 CST成功终态，36自校验/29小文件独立SHA通过、登记20；没有重放备份或另造一批。发布unit终态active/exited、Result success、ExecMainStatus0、MainPID/ControlPID0，已不等待或执行自动回退。
+
+22:53磁盘空闲Docker43,001,860,096 bytes（约40.05GiB，余量薄）、/srv/smartbrain33,054,777,344、backups345,756,135,424、cold271,612,805,120，MemAvailable8,273,473,536；原门槛未降低。无新build、大归档、历史日志/备份/容器删除。此前仅清理三批已逐文件核实的冗余staging，释放30.887GiB。
+
+验收范围：本次公网唯一员工入口、原个人Key真实请求、Windows边界及当前服务完整性通过。未声称所有模型/30人并发容量、全writer冻结/全库恢复或本次生产实际回退演练通过。原r1–r4旧发布和本次已终态promote、WindowsPrepare/Apply、backup-start均禁止重放；后续问题从当前身份取证。
+
+证据：`.artifacts/personal-api-public-only-20261018-r1/{natural-success-observation,live-release-status,final-independent-state,fresh-backup-receipt,windows-ready-receipt}.json`；Windows `windows-state-r1d/release-state.json`、`windows-settlement-before.json`、`windows-settlement-result.txt`；远端 `/srv/smartbrain/releases/personal-api-public-only-20261018-r1/evidence/`。代码/工具此前已推`5027a5b`、`67ccb9a`；本次仅提交终验文档，旧dirty不混入。

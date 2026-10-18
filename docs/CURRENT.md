@@ -1,3 +1,11 @@
+## 2026-10-18 22:53 个人API公网唯一员工入口已上线并验收
+
+用户确认测试成功；服务端确认切换后2条真实请求HTTP200且完整完成，42条个人Key聚合指纹保持。发布r1已`promoted sequence14`，新CID052676a8/image28cd0714，current unit active/enabled；Windows relay31076/backend26204保持，watchdog恢复。员工9000直连403，生产内部hop保留，管理面仅loopback；员工使用 `https://39.105.79.0/v4/personal-api/v1`＋原个人Key，无需终端输入Key。1051无关容器配置/代际保持，备份成功、门槛通过；发布进程exit0/PID0，无待验收或待回退runner。Docker约40.05GiB余量薄，后续变更须实时重测。完整冻结恢复/所有模型/30人容量未据此验收。详见[任务](tasks/2026-10-17-personal-api-relay-auth.md)、[发布](releases/personal-api-public-only-20261018-r1.md)。下方等待状态均为历史，禁止重放旧发布。
+
+## 2026-10-18 22:45 个人API已切换，等待真实请求验收
+
+Windows收尾完成，relay31076/backend26204保持，watchdog恢复；9000边界已核验。Linux新CID052676a8已接公网，current unit active/enabled；1051无关容器、42条Key指纹保持，备份/四盘门槛通过。原发布runner处于awaiting_smoke，真实公网请求验收截止22:58:22；尚无新完成请求，不能称最终上线通过。接续只观察原runner及采集自然成功收据，禁止重放promote或WindowsApply。详见[任务](tasks/2026-10-17-personal-api-relay-auth.md)、[发布](releases/personal-api-public-only-20261018-r1.md)。
+
 ## 2026-10-18 20:33 个人 API 发布：备份成功，Windows 收尾等待提权
 
 原online备份`11735eb8…`成功，36项自校验/29小文件独立SHA通过。Windows防火墙已收窄，新relay PID31076于20:25单次启动，backend26204保持；发布waiter29688因Start-Process -Wait等待常驻子进程而未退出，watchdog暂Disabled，state OldRelayStopped。隔离复现并修复发布等待逻辑；仅结束waiter、保留relay并恢复watchdog的收尾脚本已准备，但UAC返回用户取消，尚未执行。Linux个人网关尚未切换；有效原Key公网请求尚未验收，不能称上线完成。接续先核对上述原进程/状态，严禁重放Prepare、Apply、备份或旧r1–r4发布。详见[任务](tasks/2026-10-17-personal-api-relay-auth.md)和[发布](releases/personal-api-public-only-20261018-r1.md)。
