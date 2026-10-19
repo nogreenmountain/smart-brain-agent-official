@@ -1,3 +1,7 @@
+## 2026-10-19 16:53 实际终态补充
+
+r1候选检查通过后因60秒未排空在切换前退出，原生产未变；r2延长等待后同样在切换前退出。镜像构建及实际镜像PG/HTTP测试已通过。最新终态见[r2发布记录](personal-api-registration-20261019-r2.md)及[任务](../tasks/2026-10-19-personal-api-registration.md)。下面的“未构建”等描述保留为15:37历史状态，r1不可重跑。
+
 # 新账号个人 API 准入发布准备
 
 - 发布编号：personal-api-registration-20261019-r1；关联[任务](../tasks/2026-10-19-personal-api-registration.md)。

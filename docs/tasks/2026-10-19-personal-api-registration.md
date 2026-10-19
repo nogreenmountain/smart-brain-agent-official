@@ -5,7 +5,7 @@
 - 任务：personal-api-registration-20261019；负责人：Codex；核对时间：2026-10-19 15:07（Asia/Shanghai）。
 - 用户报告新号无法创建 API；目标为有效注册账号可查看名额、创建并使用自己的个人 Key，保留配额、跨账号边界与禁用/封禁/删除/匿名拒绝。
 - 权威目录：`C:\Users\test\.codex\worktrees\deb4\智慧大脑agent - 服务器端`；分支 `codex/project-memory-no-adapter`，基线 `d7861a5cd39ff7f860ea489888e9b1e254ee0bc2`。
-- 阶段：调查/候选开发；部署范围：未部署。方案见 [实施方案](../plans/2026-10-19-personal-api-registration.md)。
+- 阶段：已验证，等待空闲发布窗口；部署范围：未部署。方案见 [实施方案](../plans/2026-10-19-personal-api-registration.md)。
 - 原 dirty：relay-auth-20261017 发布记录、ai-work-record-projection-20261012 任务及未跟踪发布记录；保留且不归入本次提交。
 
 ## 已核对
@@ -36,3 +36,31 @@
 - 实际proxy原始字节SHA仍`075b650186ad79cfec6b74eb8cb257ceabe8fee7426016f91308c1acb6cc09fe`；initial-readonly里`5b57721c…`是stdout文本换行规范化后的SHA，不是生产漂移。原始字节证据在`gates-readonly.json.source_bytes_sha256`。
 - 公网ai-gateway/个人模型路由均指当前个人容器；独立workday读入口仍有自己的部署，当前任务不改变该服务或Windows。现有生产业务代码尚未切换，新账号问题仍待发布后用户验证。
 - 下一步：核对上述唯一备份终态/归档清单和容量→构建两文件叠加镜像→实际镜像独立测试→无在途流时单次发布/核对。`deploy/personal-api-registration/release.py`为新发布入口，仅复用旧库的Docker/systemd原语，不执行旧promote/Windows脚本。
+
+## 2026-10-19 15:55 发布前接续核对
+
+- 15:49/15:52/15:54仍为原online备份Invocation `68dcec4071f04a6c806763d4d72a40d7`、MainPID2135368、Job11324206；PostgreSQL 1137679980 bytes和ClickHouse 9078287608 bytes已生成，其他归档继续，未终态，不重启。
+- 本次代码与工具已限定提交并推送official：`89d5f61`、`e7d2991`、`77778be`。原三处dirty保持，不夹带。
+- 自审复现回退工具未处理Docker名称前导`/`导致名称仍占用，新增Red后最小修正，最终21项通过；生产发布尚未执行，未发生线上回退失败。证据`release-rollback-red.log`/`release-rollback-green.log`。
+- 已核对既有`validate_static_capacity`明确规则：动态备份预算在备份启动前检查并由该备份消费；备份后发布维持40/20/250/250GiB和内存储备，无需立即再留一份完整备份的瞬时预算。此处沿用既有门槛，未降低或跳过容量检查。
+- 新r4实际镜像测试入口已准备，只使用新build镜像与独立tmpfs PG，不挂载scope/app覆盖镜像；尚未执行。后继发布/只读核验/归档入口已准备，均为新任务身份，旧终态runner不重跑。
+
+## 2026-10-19 16:47 发布接续：镜像通过，等待空闲窗口
+
+- 原online备份`68dcec4071f04a6c806763d4d72a40d7`已于16:40前成功终态，PID0/Job空。16:40:30核验36项自校验、31小文件独立SHA、归档根同inode、登记20和四盘储备通过；5大payload依赖精确Invocation自校验，未另做全库冻结恢复。
+- 新镜像`sha256:97c378c7e3f3d9a60cd00e5bdae53063da7814786695cef7f4caa4db6452edd4`，tag `smartbrain/personal-key-api:2026.10.19-registration-r1`；scope SHA`2878fb16424cdd9d13e9442050971211a29631467914b8f624e3287c23db8534`、app SHA`c804ec8fdd3f3f8c6fbeb03ee5c280c2f493736e77838bc0134af6babe2ae1ad`。16:41实际镜像r4独立PG/HTTP组合1 passed，不挂载业务源码覆盖镜像；test f3248f2a/PG04624fe0均exit0停止，零生产Key/模型调用。
+- 16:42:02原47条Key聚合指纹`92286ee623b3d5708891f3a6faafb074`；相比15:07的45条存在自然变化，本任务没有签发/撤销/改Key。1059容器新切换基线，edge双视图`c22e68d9…`保持。
+- r1发布Invocation `c3b25e0450ce4c99aafdd64768c7b98a`于16:43:34 failed/exit1/PID0：候选健康通过，但60秒未排空，RuntimeError在cutover前触发；旧CID/StartedAt/配置/网络/current unit均保持。candidate06d8dc49已停；没有新业务CID、停止旧服务或实际回退。r1不可重跑。
+- r1启动调用因缺少`--no-block`等待15秒超时；已按原ExecStart/源码SHA/Invocation读回并记录接受的原job，无重复启动。新r2入口明确使用`--no-block`。
+- r2发布复用同一镜像/备份/真实测试收据，无第二次构建或PG测试；仅新批次身份与300次有界排空检查。原21项状态机测试在r2源上通过，driver已提交并推送`26a4f43`。r2根`/srv/smartbrain/releases/personal-api-registration-20261019-r2`，源码SHA`d93278ba620ba9d6bda16e307d11a99c59bb79cd1d3d9e584adc91d04d4b762c`。
+- 16:46:44 r2启动一次：unit`smartbrain-personal-registration-release-20261019-r2.service`，Invocation `b37eea7487cd4d9e8282cb6ab74b8529`/MainPID2341302/Job11350409。16:47:27仍activating，candidate a976843c已验证并停止，stage source_health_verified，等待自然空闲；只观察原r2，不启动第三批。已提示用户暂缓新AI请求以完成安全切换。
+- 证据：`backup-verified.log`、`build.log`、`isolated-pg-r4.log`、`independent-before.json`、`release-start-reconciled.json`、`release-observed.log`、`r2-uploaded.json`、`release-r2-tests.log`、`release-r2-started.log`；远端各自evidence保留。尚未称新账号线上实际领取通过。
+
+## 2026-10-19 16:53 收尾：等待空闲窗口，修复尚未切入生产
+
+- r2于16:51:59因300次排空检查仍有在途请求而在cutover前退出；Invocation `b37eea7487cd4d9e8282cb6ab74b8529` failed/exit1/MainPID0/ControlPID0/Job空，new_id=null。两次都是安全门槛拒绝，不是应用切换后故障；没有实际停止旧业务或执行回退。
+- 16:53:02独立终验：原1059容器Config/HostConfig/image/代际全部相同，新增两个候选06d8dc49/a976843c均停止保留；当前1061容器。原个人CID052676a8/image28cd0714/StartedAt14:43:13.86527095Z/current Invocation c1554993与三源码SHA保持，47条Key指纹保持；edge双视图c22e68d9保持。
+- 公网login/ready200、匿名keys/models/responses401；Windows9000员工直连403、内部标记匿名401；8执行/24等待/DB3保持，当前3执行/0等待。四盘空闲bytes为44910219264/33017987072/347418877952/271470034944，MemAvailable6580117504，backup原68d成功/登记20。
+- 当前新号仍可能收到原固定名单403，不能称已上线或真实领取完成。已请用户暂缓新的个人API任务，等现有生成结束；既有上线授权保持，不需重新批准扩容/代码/镜像。无后台发布runner、未创建定时自动任务。
+- 下一步：确认有可用空闲窗口→重新核对原CID/镜像/源码/current/Key与备份/容量→基于同一97c378c7镜像及r4测试收据，准备全新发布批次身份后单次切换，不能重跑已终态r1/r2。成功后独立核验实际registered_active准入/入口/Key/无关容器，并归档实际发布镜像与证据。
+- 尚未执行生产镜像归档和实际生产回退；原备份是online，不是完整冻结恢复合格点。`independent-blocked.json`和`blocked-final-comparison.json`为本轮最终核验。正式代码包含89d5f61/e7d2991/77778be/26a4f43，均已推official；文档后继另行提交，旧三处dirty保持。

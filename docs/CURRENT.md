@@ -1,3 +1,7 @@
+## 2026-10-19 16:53 新账号API修复镜像已验证，因在途请求尚未切入生产
+
+16:53独立核对：Docker已按授权扩2GiB；原online备份68dcec40成功，36项自检/31小文件独立SHA通过。修复镜像97c378c7实际PG/HTTP通过，代码和工具已推official。r1等待60秒、r2等待300次检查均未获得空闲窗口，在cutover前退出；两runner已终态/PID0，原个人CID052676a8/启动代际/current unit、47条Key及原1059容器保持，两个候选停止。当前3在途请求，未重启业务，新号领取仍未解决到线上。已请用户暂缓新请求，待生成结束后以全新发布身份继续；不重跑r1/r2、扩容、清理或备份。详见[任务](tasks/2026-10-19-personal-api-registration.md)和[r2发布记录](releases/personal-api-registration-20261019-r2.md)。无运行中发布进程或新自动任务，下方运行状态为历史。
+
 ## 2026-10-19 15:37 新账号个人API候选通过，储备恢复，发布前备份运行中
 
 15:07生产确认有效新账号被固定26人名单排除；候选改为实时有效注册账号校验，22项本地回归、独立PG/真实HTTP组合验收及17项发布状态机检查通过。用户批准后15:29 Docker扩2GiB完成；15:37仅清理逐文件验证相同的三份归档重复staging，释放30.887GiB，正式备份保留。新的唯一online备份Invocation `68dcec4071f04a6c806763d4d72a40d7`于15:37启动，仍未终态，只观察不重启。生产业务代码尚未发布，新账号实际领取仍未验收。详见[任务](tasks/2026-10-19-personal-api-registration.md)、[方案](plans/2026-10-19-personal-api-registration.md)、[发布准备](releases/personal-api-registration-20261019-r1.md)。扩容、两批清理、旧发布和已终态测试均不可重跑。
