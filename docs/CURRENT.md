@@ -1,3 +1,7 @@
+## 2026-10-19 15:37 新账号个人API候选通过，储备恢复，发布前备份运行中
+
+15:07生产确认有效新账号被固定26人名单排除；候选改为实时有效注册账号校验，22项本地回归、独立PG/真实HTTP组合验收及17项发布状态机检查通过。用户批准后15:29 Docker扩2GiB完成；15:37仅清理逐文件验证相同的三份归档重复staging，释放30.887GiB，正式备份保留。新的唯一online备份Invocation `68dcec4071f04a6c806763d4d72a40d7`于15:37启动，仍未终态，只观察不重启。生产业务代码尚未发布，新账号实际领取仍未验收。详见[任务](tasks/2026-10-19-personal-api-registration.md)、[方案](plans/2026-10-19-personal-api-registration.md)、[发布准备](releases/personal-api-registration-20261019-r1.md)。扩容、两批清理、旧发布和已终态测试均不可重跑。
+
 ## 2026-10-18 22:53 个人API公网唯一员工入口已上线并验收
 
 用户确认测试成功；服务端确认切换后2条真实请求HTTP200且完整完成，42条个人Key聚合指纹保持。发布r1已`promoted sequence14`，新CID052676a8/image28cd0714，current unit active/enabled；Windows relay31076/backend26204保持，watchdog恢复。员工9000直连403，生产内部hop保留，管理面仅loopback；员工使用 `https://39.105.79.0/v4/personal-api/v1`＋原个人Key，无需终端输入Key。1051无关容器配置/代际保持，备份成功、门槛通过；发布进程exit0/PID0，无待验收或待回退runner。Docker约40.05GiB余量薄，后续变更须实时重测。完整冻结恢复/所有模型/30人容量未据此验收。详见[任务](tasks/2026-10-17-personal-api-relay-auth.md)、[发布](releases/personal-api-public-only-20261018-r1.md)。下方等待状态均为历史，禁止重放旧发布。

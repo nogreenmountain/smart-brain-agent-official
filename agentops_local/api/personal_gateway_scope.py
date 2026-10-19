@@ -1,4 +1,4 @@
-"""Explicit registered-member release scope with current account checks."""
+"""Live registered-account scope, with an optional explicit pilot allowlist."""
 import uuid
 
 
@@ -11,7 +11,7 @@ def allowed_users(value: str) -> frozenset[str]:
     return frozenset(entries)
 
 
-def build_app(route, users, *, usage_route=None):
+def build_app(route, users=None, *, usage_route=None):
     from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
     from sqlalchemy import text
     from sqlalchemy.orm import Session
@@ -19,7 +19,7 @@ def build_app(route, users, *, usage_route=None):
     app = FastAPI(docs_url=None, openapi_url=None)
 
     def require_user(user, orm):
-        if str(user) not in users:
+        if users is not None and str(user) not in users:
             raise HTTPException(403, 'Personal API is limited to registered release members',
                                 headers={'Cache-Control': 'no-store'})
         current = orm.execute(text('''
@@ -67,6 +67,7 @@ def build_app(route, users, *, usage_route=None):
     @app.get('/health')
     def health():
         return {'status': 'ok', 'scope': 'workday-gateway-read' if usage_route else 'personal-api-registered',
-                'member_count': len(users)}
+                'membership_policy': 'registered_active' if users is None else 'release_allowlist',
+                'member_count': None if users is None else len(users)}
 
     return app
