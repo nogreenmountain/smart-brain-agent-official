@@ -271,9 +271,9 @@ class Ops:
         if new:
             self.helper.stop_container(new)
             self.helper.detach_container(new)
-            if self.helper.container_name(new) == NAME:
+            if self.helper.container_name(new).lstrip('/') == NAME:
                 self.helper.rename_container(new, NAME + '-failed-registration-20261019-r1')
-        if self.helper.container_name(OLD) != NAME:
+        if self.helper.container_name(OLD).lstrip('/') != NAME:
             self.helper.rename_container(OLD, NAME)
         networks = self.helper.inspect(OLD)['NetworkSettings']['Networks']
         for network, endpoint in self.state['old_network'].items():

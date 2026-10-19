@@ -112,3 +112,26 @@ def test_overlay_sources_are_readable_by_the_runtime_user():
     for source in ('personal_gateway_scope.py', 'personal_gateway_app.py'):
         assert 'COPY --chown=10001:10001 --chmod=0644 ' + source in dockerfile
     assert dockerfile.rstrip().endswith('USER 10001:10001')
+
+
+def test_restore_releases_docker_slash_prefixed_successor_name():
+    ops = release.Ops.__new__(release.Ops)
+    ops.state = {'old_fingerprint': 'old', 'old_network': {}}
+    ops.unit_before, ops.inventory_before = b'unit', b'inventory'
+    names = {'new': '/' + release.NAME, release.OLD: '/' + release.ROLLBACK_NAME}
+    def rename(cid, name):
+        assert '/' + name not in names.values(), 'Docker name is still occupied'
+        names[cid] = '/' + name
+    ops.helper = SimpleNamespace(
+        name_owner=lambda name: 'new', container_running=lambda cid: False,
+        stop_unit=lambda: None, stop_container=lambda cid: None, detach_container=lambda cid: None,
+        container_name=lambda cid: names[cid], rename_container=rename,
+        inspect=lambda cid: {'NetworkSettings': {'Networks': {}}},
+        write_unit=lambda value: None, write_inventory=lambda value: None,
+        daemon_reload=lambda: None, reset_failed_unit=lambda: None, start_unit=lambda: None,
+        wait_running=lambda cid: None, validate_unit=lambda cid: None,
+        fingerprint=lambda cid: 'old', network_shape=lambda cid: {},
+        source_sha=lambda cid: release.PROXY_SHA)
+    ops.restore('new')
+    assert names[release.OLD] == '/' + release.NAME
+    assert names['new'] != '/' + release.NAME
