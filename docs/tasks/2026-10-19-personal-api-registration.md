@@ -64,3 +64,10 @@
 - 当前新号仍可能收到原固定名单403，不能称已上线或真实领取完成。已请用户暂缓新的个人API任务，等现有生成结束；既有上线授权保持，不需重新批准扩容/代码/镜像。无后台发布runner、未创建定时自动任务。
 - 下一步：确认有可用空闲窗口→重新核对原CID/镜像/源码/current/Key与备份/容量→基于同一97c378c7镜像及r4测试收据，准备全新发布批次身份后单次切换，不能重跑已终态r1/r2。成功后独立核验实际registered_active准入/入口/Key/无关容器，并归档实际发布镜像与证据。
 - 尚未执行生产镜像归档和实际生产回退；原备份是online，不是完整冻结恢复合格点。`independent-blocked.json`和`blocked-final-comparison.json`为本轮最终核验。正式代码包含89d5f61/e7d2991/77778be/26a4f43，均已推official；文档后继另行提交，旧三处dirty保持。
+
+## 2026-10-19 18:32 用户停止请求后切换接续
+
+- 最新用户“已停止，切入生产”。18:27:39核对执行0/等待0/DB0，旧CID/StartedAt/current/47条Key保持，1061容器基线；原备份68d成功、登记20、容量通过，旧before证据已加时间后缀保留。
+- r3于18:29:29因候选名称仍为r2在preflight拒绝，Invocation4f064dcc、failed/exit1/PID0、new_id=null，原业务未停。错误记录保留，新增名称隔离回归Red复现；r4全身份修正后22项通过，镜像不变。
+- r4 driver67674809、镜像97c378c7；准备提交bff67d8已推official。18:32:05仅启动一次unit `smartbrain-personal-registration-release-20261019-r4.service`，Invocation `28aca7cd84c641109c166c4bb1729b49`、MainPID2634742、Job11368346，首次activating。后续只用observe_release_r4_remote.py观察原Invocation，不重跑start/r1–r3。
+- 完成状态待独立核验和归档；不冒充真实新号页面领取通过。没有第二次扩容/清理/备份/镜像构建/生产Key创建。
