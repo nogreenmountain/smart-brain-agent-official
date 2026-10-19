@@ -1,3 +1,7 @@
+## 2026-10-19 18:39 新账号个人API准入修复已上线，服务器侧核验通过
+
+18:32:30 r4成功切入，18:34–18:36独立核验：个人新CID d5b76168/image97c378c7，current unit active/enabled、writer绑定一致；正式入口实时验证有效注册账号，25个有效账号含此前名单外3个全部通过实际app只读准入，原47条Key保持。公网200/匿名401、9000直连403及1060无关容器/edge保持，8/24/DB3不变。镜像/证据已归档，独立SHA与OCI 62 blob通过；原online备份成功、四盘储备通过。r4 runner success/exit0/PID0，旧个人及候选停止保留，无新自动任务。r3名称错误在切换前拒绝，已修正并保留失败证据；所有旧批次、扩容、清理、备份及归档不可重跑。**真实新号页面领取Key及模型使用待用户验收；未做完整冻结恢复。** 详见[任务](tasks/2026-10-19-personal-api-registration.md)、[r4实际发布](releases/personal-api-registration-20261019-r4.md)。下方未上线状态均为历史。
+
 ## 2026-10-19 16:53 新账号API修复镜像已验证，因在途请求尚未切入生产
 
 16:53独立核对：Docker已按授权扩2GiB；原online备份68dcec40成功，36项自检/31小文件独立SHA通过。修复镜像97c378c7实际PG/HTTP通过，代码和工具已推official。r1等待60秒、r2等待300次检查均未获得空闲窗口，在cutover前退出；两runner已终态/PID0，原个人CID052676a8/启动代际/current unit、47条Key及原1059容器保持，两个候选停止。当前3在途请求，未重启业务，新号领取仍未解决到线上。已请用户暂缓新请求，待生成结束后以全新发布身份继续；不重跑r1/r2、扩容、清理或备份。详见[任务](tasks/2026-10-19-personal-api-registration.md)和[r2发布记录](releases/personal-api-registration-20261019-r2.md)。无运行中发布进程或新自动任务，下方运行状态为历史。

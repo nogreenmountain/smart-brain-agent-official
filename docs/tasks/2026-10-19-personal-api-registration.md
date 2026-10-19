@@ -5,7 +5,7 @@
 - 任务：personal-api-registration-20261019；负责人：Codex；核对时间：2026-10-19 15:07（Asia/Shanghai）。
 - 用户报告新号无法创建 API；目标为有效注册账号可查看名额、创建并使用自己的个人 Key，保留配额、跨账号边界与禁用/封禁/删除/匿名拒绝。
 - 权威目录：`C:\Users\test\.codex\worktrees\deb4\智慧大脑agent - 服务器端`；分支 `codex/project-memory-no-adapter`，基线 `d7861a5cd39ff7f860ea489888e9b1e254ee0bc2`。
-- 阶段：已验证，等待空闲发布窗口；部署范围：未部署。方案见 [实施方案](../plans/2026-10-19-personal-api-registration.md)。
+- 阶段：已验证（生产准入/运行/归档）；部署范围：生产；真实新号页面领取待用户验收。方案见 [实施方案](../plans/2026-10-19-personal-api-registration.md)。
 - 原 dirty：relay-auth-20261017 发布记录、ai-work-record-projection-20261012 任务及未跟踪发布记录；保留且不归入本次提交。
 
 ## 已核对
@@ -71,3 +71,18 @@
 - r3于18:29:29因候选名称仍为r2在preflight拒绝，Invocation4f064dcc、failed/exit1/PID0、new_id=null，原业务未停。错误记录保留，新增名称隔离回归Red复现；r4全身份修正后22项通过，镜像不变。
 - r4 driver67674809、镜像97c378c7；准备提交bff67d8已推official。18:32:05仅启动一次unit `smartbrain-personal-registration-release-20261019-r4.service`，Invocation `28aca7cd84c641109c166c4bb1729b49`、MainPID2634742、Job11368346，首次activating。后续只用observe_release_r4_remote.py观察原Invocation，不重跑start/r1–r3。
 - 完成状态待独立核验和归档；不冒充真实新号页面领取通过。没有第二次扩容/清理/备份/镜像构建/生产Key创建。
+
+## 2026-10-19 18:39 发布完成与独立核验
+
+- r4于18:32:05启动、18:32:30 promoted；18:36:42终态再核对：Invocation `28aca7cd84c641109c166c4bb1729b49`，success/exit0/MainPID0/ControlPID0/Job空。没有运行中发布runner，无新自动任务，r1–r4/start/归档均不可重跑。
+- 当前CID `d5b76168fd4168de808f4df3d1b0e9ceaf8c7cdc1f19b9ebb1cd64fd3ee54627`，镜像 `sha256:97c378c7e3f3d9a60cd00e5bdae53063da7814786695cef7f4caa4db6452edd4`，StartedAt `2026-10-19T10:32:21.769109798Z`，RestartCount0。current unit active/running/enabled、Invocation `4c5bcafe67ea492d9a08edb95dfc7dbc`、PID2637747；writer inventory的CID/image/配置hash一致。
+- 18:34:46实际scope/app SHA与候选一致，proxy SHA075b6501保持；健康membership_policy=registered_active、member_count=null，8执行/24等待/DB3，现场0执行/0等待/DB0。
+- 使用实际生产app的browser_scope/require_user闭包及只读事务，25个有效账号全部通过，包括旧名单外3个。47条Key聚合指纹 `92286ee623b3d5708891f3a6faafb074`保持；本任务没有创建/撤销/轮换生产Key或主动模型调用。
+- 公网login/ready200，匿名keys/models/responses401；Windows9000员工直连403、内部标记匿名401。1060个无关容器配置/代际逐一保持，edge原CID/StartedAt及宿主/实际挂载c22e68d9保持；当前1063容器。
+- 原CID052676a8以本次rollback名称停止/断网保留，r4候选12d5a848停止。新容器Env/Cmd/HostConfig/网络保持，仅镜像/hostname及本次scope标签变化；无DB迁移/历史回写/批量重启，生产实际回退未执行。
+- 18:35单次归档 `/srv/smartbrain-backups/backups/personal-api-registration-20261019-r4`：image.oci.tar.gz 193005201 bytes/SHA `70ef35f66e026d69707951cb3b621cccb7ea3289e2f3083126364e6347c6d3ca`；evidence.private.tar.gz 94794 bytes/SHA `01188dc03817a32ac6dbe85be21ec587302531d9cae31eff52af4dfab94dfb30`；均0600。
+- 18:36:42独立重算两个归档SHA/尺寸/权限，OCI顶层index匹配生产镜像；62个blob及62个引用descriptor的SHA/尺寸通过。原成功online备份68d保持；四盘free bytes 44895653888/33006809088/347225763840/271495798784，内存可用6575812608，原门槛通过。
+- 核验工具失败保留：初次after假设扁平FastAPI路由而失败，后按实际_IncludedRouter.include_context依赖核验通过；首次归档检查误把Docker29 OCI index ID当config digest，后以实际index/全部blob校验通过。未改业务或归档以迎合检查。
+- 发布准备1aadebe/bff67d8已推official；e7705da仅保存启动checkpoint，提交标题不能代替最终发布证据。本段为实际收尾记录，限定提交并镜像E；三处原dirty保持。
+- 证据：`.artifacts/personal-api-registration-20261019/{release-r4-started.log,release-r4-observed-final.log,independent-after.json,independent-after-verified.log,archive-r4.log,final-readonly-r4.json}`；服务器r4/evidence保留对应终态。
+- **生产部署及服务器侧核验完成；真实新号登录页面领取Key、使用模型仍待用户侧验收。** online备份不是完整冻结恢复；不宣称全系统恢复/30人容量或全部模型已验。下一步用户刷新个人API页面尝试创建，原个人Key继续使用公网唯一入口。
