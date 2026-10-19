@@ -557,7 +557,7 @@ def review_gateway_key_request(
         """), {'uid': str(row.user_id), 'total': int(row.requested_total)})
     updated = orm.execute(text("""
         UPDATE public.ai_gateway_key_requests
-        SET status=:status, reviewed_by=:reviewer, review_comment=NULLIF(btrim(:comment), ''), reviewed_at=now()
+        SET status=:status, reviewed_by=:reviewer, review_comment=btrim(:comment), reviewed_at=now()
         WHERE id=:id
         RETURNING id, user_id, requested_total, reason, status, reviewed_by,
                   review_comment, created_at, reviewed_at
