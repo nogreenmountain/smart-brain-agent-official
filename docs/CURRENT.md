@@ -1,3 +1,11 @@
+## 2026-10-19 19:00 个人API空备注审批500已修复并上线
+
+18:57:47 approval-r1上线，18:58–18:59独立核验：新个人CID7db129b5/imagec49eadce、current active/enabled/精确writer绑定。可选审批备注不再转NULL，兼容原NOT NULL字段，无DDL；实际镜像12项PG/socket HTTP及22项发布工具通过，生产实际表达式只读核验通过。47Key/3审批/1名额记录聚合全部保持，1069无关容器/edge及注册准入8/24/DB3、9000关闭边界保持。镜像/证据已归档且独立SHA/OCI64 blob通过；发布runner success/exit0/PID0，所有本轮测试停止。**真实用户登录审批仍待确认，pending申请未代用户重放。** [任务](tasks/2026-10-19-personal-api-approval.md)、[实际发布](releases/personal-api-approval-20261019-r1.md)。旧发布、扩容、清理、备份和本次归档均不可重跑。
+
+## 2026-10-19 18:56 个人API可选审批备注故障已复现，修复候选验证中
+
+用户反馈审批新增API失败。当前生产审批SQL将空备注转NULL，与现有NOT NULL约束冲突；原镜像真实隔离PG/HTTP复现6失败，候选单行修正后11项通过，源码已推official90ad8de。新镜像c49eadce已构建，正在进行实际镜像审批与原注册回归；生产仍d5b76168/image97c378c7。原47Key保持，pending审批不代用户重放，无生产DDL/配额变更；旧注册发布/扩容/清理/备份不可重跑。详见[任务](tasks/2026-10-19-personal-api-approval.md)、[发布准备](releases/personal-api-approval-20261019-r1.md)。
+
 ## 2026-10-19 18:39 新账号个人API准入修复已上线，服务器侧核验通过
 
 18:32:30 r4成功切入，18:34–18:36独立核验：个人新CID d5b76168/image97c378c7，current unit active/enabled、writer绑定一致；正式入口实时验证有效注册账号，25个有效账号含此前名单外3个全部通过实际app只读准入，原47条Key保持。公网200/匿名401、9000直连403及1060无关容器/edge保持，8/24/DB3不变。镜像/证据已归档，独立SHA与OCI 62 blob通过；原online备份成功、四盘储备通过。r4 runner success/exit0/PID0，旧个人及候选停止保留，无新自动任务。r3名称错误在切换前拒绝，已修正并保留失败证据；所有旧批次、扩容、清理、备份及归档不可重跑。**真实新号页面领取Key及模型使用待用户验收；未做完整冻结恢复。** 详见[任务](tasks/2026-10-19-personal-api-registration.md)、[r4实际发布](releases/personal-api-registration-20261019-r4.md)。下方未上线状态均为历史。
