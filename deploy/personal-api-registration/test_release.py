@@ -105,3 +105,10 @@ def test_rollback_does_not_stop_an_active_successor():
     with pytest.raises(RuntimeError, match='active requests'):
         ops.restore('new')
     assert stopped == []
+
+
+def test_overlay_sources_are_readable_by_the_runtime_user():
+    dockerfile = Path(__file__).with_name('Dockerfile').read_text()
+    for source in ('personal_gateway_scope.py', 'personal_gateway_app.py'):
+        assert 'COPY --chown=10001:10001 --chmod=0644 ' + source in dockerfile
+    assert dockerfile.rstrip().endswith('USER 10001:10001')
