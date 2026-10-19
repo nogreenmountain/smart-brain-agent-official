@@ -26,3 +26,7 @@
 ## 验收边界与待补结果
 
 真实新号页面领取及模型使用须用户侧确认，不以隔离PG或只读准入冒充。原备份为online；完整冻结恢复未验收。生产实际回退未执行。发布/独立核验/归档结果待后继追加；证据位于 `.artifacts/personal-api-registration-20261019/` 与服务器对应r3目录。
+
+## 18:30 实际终态：切换前名称冲突拒绝
+
+18:29:29 r3 Invocation `4f064dcc591445fca1feb3aa340c1433` failed/exit1/PID0/Job空，只有failed阶段、new_id=null。driver第110行检查候选名称时发现仍指向已停止的r2候选a976843c；派生时漏替换ready名称，是发布工具准备错误。原CID052676a8/StartedAt保持，没有业务停止/新容器/实际回退。r3不重跑，新增回归准确复现1 failed/21 passed；r4全身份修正后22 passed，使用新身份继续。
